@@ -21,9 +21,32 @@ export async function tknWasm() {
 
     // 实例化 WASM 模块
     console.log('Instantiating WASM module...');
-    const wasmModuleObj = await WebAssembly.instantiate(buffer, importObject);
+    console.log('importObject:', importObject);
+    console.log('importObject.env:', importObject.env);
+    console.log('buffer byteLength:', buffer.byteLength);
+    console.log('buffer type:', typeof buffer);
+    
+    let wasmModuleObj;
+    try {
+        console.log('About to call WebAssembly.instantiate');
+        wasmModuleObj = await WebAssembly.instantiate(buffer, importObject);
+        console.log('instantiate succeeded');
+        console.log('wasmModuleObj:', wasmModuleObj);
+        console.log('wasmModuleObj type:', typeof wasmModuleObj);
+        console.log('wasmModuleObj keys:', Object.keys(wasmModuleObj));
+        console.log('wasmModuleObj.instance:', wasmModuleObj.instance);
+    } catch (instantiateError) {
+        console.error('Error during WebAssembly.instantiate:', instantiateError);
+        console.error('instantiateError message:', instantiateError.message);
+        throw instantiateError;
+    }
+    
+    if (!wasmModuleObj) {
+        throw new Error('wasmModuleObj is undefined after instantiate');
+    }
+    
     const wasmModule = wasmModuleObj.module;
-    const wasmExports = wasmModuleObj.pInstance.exports;
+    const wasmExports = wasmModuleObj.instance.exports;
 
     console.log('WASM exports:', Object.keys(wasmExports));
 

@@ -18,7 +18,7 @@ async function initApp() {
     try {
         const canvas = document.getElementById('canvas');
         const dpr = window.devicePixelRatio || 1;
-        
+
         canvas.width = window.innerWidth * dpr;
         canvas.height = window.innerHeight * dpr;
         canvas.style.width = window.innerWidth + 'px';
@@ -84,23 +84,23 @@ async function initApp() {
         console.log('[app.js] Pipeline created');
 
         fpsCounter = setupFPSCounter();
-        
+
         // 尝试加载 WASM，但如果失败也不中断渲染
         try {
             console.log('[app.js] Attempting to load WASM...');
-            const { tknWasm } = await import('./tknWasm.js');
+            const { tknWasm } = await import(`./tknWasm.js?t=${Date.now()}`);
             const wasm = await tknWasm();
             wasmExports = wasm.wasmExports;
             wasmImportObject = wasm.importObject;
             console.log('[app.js] WASM loaded successfully');
             console.log('[app.js] importObject.env.tknCreateGfxContextPtr exists:', typeof wasmImportObject.env.tknCreateGfxContextPtr);
-            
+
             // 获取 canvas 信息
             const canvas = document.getElementById('canvas');
             const canvasWidth = canvas.width;
             const canvasHeight = canvas.height;
             console.log('[app.js] About to call tknCreateGfxContextPtr');
-            
+
             // 调用 tknCreateGfxContextPtr（从 importObject.env 获取）
             const gfxContextObj = wasmImportObject.env.tknCreateGfxContextPtr(
                 null,                    // pInstance
@@ -110,19 +110,22 @@ async function initApp() {
                 0,                      // globalShaderPathCount
                 0                       // globalShaderPathsPtr
             );
-            
+
             console.log('[app.js] tknCreateGfxContextPtr returned:', gfxContextObj);
             console.log('[app.js] gfxContextObj.initPromise:', gfxContextObj.initPromise);
-            
+
             // 等待 WASM 的异步初始化完成
             gfxContext = await gfxContextObj.initPromise;
             console.log('[app.js] WASM graphics context initialized');
             document.getElementById('status').textContent = 'WASM + WebGPU Ready';
         } catch (wasmError) {
-            console.warn('[app.js] WASM loading failed, continuing with WebGPU only:', wasmError);
+            console.error('[app.js] WASM loading failed:', wasmError);
+            console.error('[app.js] Error stack:', wasmError.stack);
+            document.getElementById('error').textContent = `WASM Error: ${wasmError.message}`;
+            document.getElementById('error').style.display = 'block';
             // 如果 WASM 加载失败，gfxContext 保持 null，用纯 JavaScript 渲染
         }
-        
+
         startRenderLoop(device, context, pipeline);
 
     } catch (error) {
