@@ -1,6 +1,6 @@
 #include "tknGfx.h"
 #include "tkn.h"
-static void createVkInstance(TknGfxContext *pTknGfxContext, int extensionCount, const char **extensions)
+static void tknCreateVkInstance(TknGfxContext *pTknGfxContext, int extensionCount, const char **extensions)
 {
     VkApplicationInfo appInfo = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -20,7 +20,7 @@ static void createVkInstance(TknGfxContext *pTknGfxContext, int extensionCount, 
 
     tknAssertVkResult(vkCreateInstance(&createInfo, NULL, &pTknGfxContext->vkInstance));
 }
-static void destroyVkInstance(TknGfxContext *pTknGfxContext)
+static void tknDestroyVkInstance(TknGfxContext *pTknGfxContext)
 {
     if (pTknGfxContext->vkInstance != NULL)
     {
@@ -316,10 +316,188 @@ static void tknPopulateLogicalDevice(TknGfxContext *pTknGfxContext)
     vkGetDeviceQueue(pTknGfxContext->vkDevice, tknPresentQueueFamilyIndex, 0, &pTknGfxContext->vkPresentQueue);
     tknFree(queueCreateInfos);
 }
-
 static void tknCleanupLogicalDevice(TknGfxContext *pTknGfxContext)
 {
     vkDestroyDevice(pTknGfxContext->vkDevice, NULL);
+}
+
+static void tknCreateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D targetSwapchainExtent)
+{
+    VkPhysicalDevice vkPhysicalDevice = pTknGfxContext->vkPhysicalDevice;
+    VkSurfaceKHR vkSurface = pTknGfxContext->vkSurface;
+    VkDevice vkDevice = pTknGfxContext->vkDevice;
+
+    tknAssertVkResult(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice, vkSurface, &pTknGfxContext->vkSurfaceCapabilities));
+
+    uint32_t tknSwapchainImageCount = TKN_CLAMP(pTknGfxContext->swapchainImageCount, pTknGfxContext->vkSurfaceCapabilities.minImageCount, pTknGfxContext->vkSurfaceCapabilities.maxImageCount);
+    VkExtent2D tknSwapchainExtent;
+    tknSwapchainExtent.width = TKN_CLAMP(targetSwapchainExtent.width, pTknGfxContext->vkSurfaceCapabilities.minImageExtent.width, pTknGfxContext->vkSurfaceCapabilities.maxImageExtent.width);
+    tknSwapchainExtent.height = TKN_CLAMP(targetSwapchainExtent.height, pTknGfxContext->vkSurfaceCapabilities.minImageExtent.height, pTknGfxContext->vkSurfaceCapabilities.maxImageExtent.height);
+
+    VkSharingMode imageSharingMode = pTknGfxContext->tknGfxQueueFamilyIndex != pTknGfxContext->tknPresentQueueFamilyIndex ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+    uint32_t queueFamilyIndexCount = pTknGfxContext->tknGfxQueueFamilyIndex != pTknGfxContext->tknPresentQueueFamilyIndex ? 2 : 0;
+    uint32_t pQueueFamilyIndices[] = {pTknGfxContext->tknGfxQueueFamilyIndex, pTknGfxContext->tknPresentQueueFamilyIndex};
+
+    VkSwapchainCreateInfoKHR swapchainCreateInfo =
+        {
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .pNext = NULL,
+            .flags = 0,
+            .surface = vkSurface,
+            .minImageCount = tknSwapchainImageCount,
+            .imageFormat = pTknGfxContext->tknSurfaceFormat.format,
+            .imageColorSpace = pTknGfxContext->tknSurfaceFormat.colorSpace,
+            .imageExtent = tknSwapchainExtent,
+            .imageArrayLayers = 1,
+            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .imageSharingMode = imageSharingMode,
+            .queueFamilyIndexCount = queueFamilyIndexCount,
+            .pQueueFamilyIndices = pQueueFamilyIndices,
+            .preTransform = pTknGfxContext->vkSurfaceCapabilities.currentTransform,
+            .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .presentMode = pTknGfxContext->tknPresentMode,
+            .clipped = VK_TRUE,
+            .oldSwapchain = VK_NULL_HANDLE,
+        };
+    tknAssertVkResult(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfo, NULL, &pTknGfxContext->vkSwapchain));
+
+    VkImage *tknSwapchainImages = tknMalloc(tknSwapchainImageCount * sizeof(VkImage));
+    tknAssertVkResult(vkGetSwapchainImagesKHR(vkDevice, pTknGfxContext->vkSwapchain, &tknSwapchainImageCount, tknSwapchainImages));
+
+    pTknGfxContext->tknSwapchainImagePtrs = tknMalloc(tknSwapchainImageCount * sizeof(TknImage *));
+    pTknGfxContext->tknSwapchainImageViewPtrs = tknMalloc(tknSwapchainImageCount * sizeof(TknImageView *));
+    for (uint32_t i = 0; i < tknSwapchainImageCount; i++)
+    {
+        TknImage *pTknImage = (TknImage *)tknMalloc(sizeof(TknImage));
+        pTknImage->vkImage = tknSwapchainImages[i];
+        pTknImage->vkDeviceMemory = VK_NULL_HANDLE;
+        pTknImage->tknImageViewPtrHashSet = tknCreateHashSet(sizeof(void *));
+        pTknGfxContext->tknSwapchainImagePtrs[i] = pTknImage;
+
+        TknImageView *pTknImageView = (TknImageView *)tknCreateImageView(
+            pTknGfxContext,
+            0,
+            1,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            0,
+            1,
+            VK_IMAGE_VIEW_TYPE_2D,
+            pTknGfxContext->tknSurfaceFormat.format,
+            pTknImage);
+        pTknGfxContext->tknSwapchainImageViewPtrs[i] = pTknImageView;
+    }
+    tknFree(tknSwapchainImages);
+    pTknGfxContext->swapchainImageCount = tknSwapchainImageCount;
+};
+static void tknDestroySwapchain(TknGfxContext *pTknGfxContext)
+{
+    VkDevice vkDevice = pTknGfxContext->vkDevice;
+
+    for (uint32_t i = 0; i < pTknGfxContext->swapchainImageCount; i++)
+    {
+        tknDestroyImageView(pTknGfxContext, pTknGfxContext->tknSwapchainImageViewPtrs[i]);
+        // Swapchain's VkImage is managed by vkDestroySwapchainKHR, only free the TknImage wrapper
+        tknDestroyHashSet(pTknGfxContext->tknSwapchainImagePtrs[i]->tknImageViewPtrHashSet);
+        tknFree(pTknGfxContext->tknSwapchainImagePtrs[i]);
+    }
+    tknFree(pTknGfxContext->tknSwapchainImagePtrs);
+    tknFree(pTknGfxContext->tknSwapchainImageViewPtrs);
+    vkDestroySwapchainKHR(vkDevice, pTknGfxContext->vkSwapchain, NULL);
+
+    // Reset swapchain state
+    pTknGfxContext->swapchainImageCount = 0;
+    pTknGfxContext->tknSwapchainImagePtrs = NULL;
+    pTknGfxContext->tknSwapchainImageViewPtrs = NULL;
+    pTknGfxContext->vkSwapchain = VK_NULL_HANDLE;
+}
+static void tknUpdateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D tknSwapchainExtent)
+{
+    VkPhysicalDevice vkPhysicalDevice = pTknGfxContext->vkPhysicalDevice;
+    VkSurfaceKHR vkSurface = pTknGfxContext->vkSurface;
+    VkDevice vkDevice = pTknGfxContext->vkDevice;
+    tknAssertVkResult(vkDeviceWaitIdle(vkDevice));
+
+    // Destroy only VkImageView (keep TknImageView objects intact)
+    for (uint32_t i = 0; i < pTknGfxContext->swapchainImageCount; i++)
+    {
+        vkDestroyImageView(vkDevice, pTknGfxContext->tknSwapchainImageViewPtrs[i]->vkImageView, NULL);
+    }
+
+    // Destroy VkSwapchain
+    vkDestroySwapchainKHR(vkDevice, pTknGfxContext->vkSwapchain, NULL);
+
+    // Update surface capabilities
+    tknAssertVkResult(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice, vkSurface, &pTknGfxContext->vkSurfaceCapabilities));
+
+    // Clamp new extent
+    tknSwapchainExtent.width = TKN_CLAMP(tknSwapchainExtent.width, pTknGfxContext->vkSurfaceCapabilities.minImageExtent.width, pTknGfxContext->vkSurfaceCapabilities.maxImageExtent.width);
+    tknSwapchainExtent.height = TKN_CLAMP(tknSwapchainExtent.height, pTknGfxContext->vkSurfaceCapabilities.minImageExtent.height, pTknGfxContext->vkSurfaceCapabilities.maxImageExtent.height);
+
+    // Create new VkSwapchain
+    VkSharingMode imageSharingMode = pTknGfxContext->tknGfxQueueFamilyIndex != pTknGfxContext->tknPresentQueueFamilyIndex ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+    uint32_t queueFamilyIndexCount = pTknGfxContext->tknGfxQueueFamilyIndex != pTknGfxContext->tknPresentQueueFamilyIndex ? 2 : 0;
+    uint32_t pQueueFamilyIndices[] = {pTknGfxContext->tknGfxQueueFamilyIndex, pTknGfxContext->tknPresentQueueFamilyIndex};
+    VkSwapchainCreateInfoKHR swapchainCreateInfo =
+        {
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .pNext = NULL,
+            .flags = 0,
+            .surface = vkSurface,
+            .minImageCount = pTknGfxContext->swapchainImageCount,
+            .imageFormat = pTknGfxContext->tknSurfaceFormat.format,
+            .imageColorSpace = pTknGfxContext->tknSurfaceFormat.colorSpace,
+            .imageExtent = tknSwapchainExtent,
+            .imageArrayLayers = 1,
+            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .imageSharingMode = imageSharingMode,
+            .queueFamilyIndexCount = queueFamilyIndexCount,
+            .pQueueFamilyIndices = pQueueFamilyIndices,
+            .preTransform = pTknGfxContext->vkSurfaceCapabilities.currentTransform,
+            .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .presentMode = pTknGfxContext->tknPresentMode,
+            .clipped = VK_TRUE,
+            .oldSwapchain = VK_NULL_HANDLE,
+        };
+    tknAssertVkResult(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfo, NULL, &pTknGfxContext->vkSwapchain));
+
+    // Get new VkImage handles
+    uint32_t updatedSwapchainImageCount = pTknGfxContext->swapchainImageCount;
+    VkImage *tknSwapchainImages = tknMalloc(updatedSwapchainImageCount * sizeof(VkImage));
+    tknAssertVkResult(vkGetSwapchainImagesKHR(vkDevice, pTknGfxContext->vkSwapchain, &updatedSwapchainImageCount, tknSwapchainImages));
+
+    // Update existing TknImage objects and recreate VkImageView in existing TknImageView objects
+    for (uint32_t i = 0; i < updatedSwapchainImageCount; i++)
+    {
+        // Update VkImage in existing TknImage
+        pTknGfxContext->tknSwapchainImagePtrs[i]->vkImage = tknSwapchainImages[i];
+
+        // Recreate VkImageView in existing TknImageView
+        VkComponentMapping components = {
+            .r = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .a = VK_COMPONENT_SWIZZLE_IDENTITY,
+        };
+        VkImageSubresourceRange subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+        VkImageViewCreateInfo imageViewCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .image = tknSwapchainImages[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = pTknGfxContext->tknSurfaceFormat.format,
+            .components = components,
+            .subresourceRange = subresourceRange,
+        };
+        tknAssertVkResult(vkCreateImageView(vkDevice, &imageViewCreateInfo, NULL, &pTknGfxContext->tknSwapchainImageViewPtrs[i]->vkImageView));
+    }
+    tknFree(tknSwapchainImages);
 }
 
 void *tknCreateGfxContextPtr(int extensionCount, const char **extensions, void *pSurface, int width, int height, int globalShaderPathCount, const char **globalShaderPaths)
@@ -327,7 +505,7 @@ void *tknCreateGfxContextPtr(int extensionCount, const char **extensions, void *
     TknGfxContext *pTknGfxContext = tknMalloc(sizeof(TknGfxContext));
     *pTknGfxContext = (TknGfxContext){
         .vkInstance = VK_NULL_HANDLE,
-        .vkSurface = (VkSurfaceKHR)pSurface,
+        .vkSurface = VK_NULL_HANDLE,
         .tknSurfaceFormat = {
             .format = VK_FORMAT_B8G8R8A8_UNORM,
             .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
@@ -341,107 +519,30 @@ void *tknCreateGfxContextPtr(int extensionCount, const char **extensions, void *
         .vkDevice = VK_NULL_HANDLE,
         .vkGfxQueue = VK_NULL_HANDLE,
         .vkPresentQueue = VK_NULL_HANDLE,
+
+        .vkSurfaceCapabilities = 0,
+        .swapchainImageCount = 2,
+        .tknSwapchainImagePtrs = NULL,
+        .tknSwapchainImageViewPtrs = NULL,
+        .vkSwapchain = VK_NULL_HANDLE,
+
+        .vkGfxCommandPool = VK_NULL_HANDLE,
     };
-    createVkInstance(pTknGfxContext, extensionCount, extensions);
+    tknCreateVkInstance(pTknGfxContext, extensionCount, extensions);
     tknPickPhysicalDevice(pTknGfxContext);
     tknPopulateLogicalDevice(pTknGfxContext);
     VkExtent2D tknSwapchainExtent = {
         .width = width,
         .height = height,
     };
-    uint32_t targetSwapchainImageCount = 2;
+    tknCreateSwapchain(pTknGfxContext, tknSwapchainExtent);
     return pTknGfxContext;
 }
+
 void tknDestroyGfxContextPtr(void *pTknGfxContext)
 {
     TknGfxContext *pTknGfxContextCasted = (TknGfxContext *)pTknGfxContext;
     tknCleanupLogicalDevice(pTknGfxContextCasted);
-    destroyVkInstance(pTknGfxContextCasted);
+    tknDestroyVkInstance(pTknGfxContextCasted);
     tknFree(pTknGfxContextCasted);
-}
-
-VkImageType tknImageDimensionToVkImageType(TknImageDimension dimension)
-{
-    switch (dimension)
-    {
-    case TKN_IMAGE_1D:
-        return VK_IMAGE_TYPE_1D;
-    case TKN_IMAGE_2D:
-        return VK_IMAGE_TYPE_2D;
-    case TKN_IMAGE_3D:
-        return VK_IMAGE_TYPE_3D;
-    default:
-        tknError("Invalid image dimension: %d", dimension);
-        return VK_IMAGE_TYPE_2D;
-    }
-}
-
-VkImageViewType tknImageViewDimensionToVkImageViewType(TknImageViewDimension dimension)
-{
-    switch (dimension)
-    {
-    case TKN_IMAGE_VIEW_1D:
-        return VK_IMAGE_VIEW_TYPE_1D;
-    case TKN_IMAGE_VIEW_2D:
-        return VK_IMAGE_VIEW_TYPE_2D;
-    case TKN_IMAGE_VIEW_3D:
-        return VK_IMAGE_VIEW_TYPE_3D;
-    case TKN_IMAGE_VIEW_1D_ARRAY:
-        return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
-    case TKN_IMAGE_VIEW_2D_ARRAY:
-        return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-    case TKN_IMAGE_VIEW_CUBE:
-        return VK_IMAGE_VIEW_TYPE_CUBE;
-    case TKN_IMAGE_VIEW_CUBE_ARRAY:
-        return VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
-    default:
-        tknError("Invalid image view dimension: %d", dimension);
-        return VK_IMAGE_VIEW_TYPE_2D;
-    }
-}
-
-VkFormat tknImageFormatToVkFormat(TknImageFormat format)
-{
-    switch (format)
-    {
-    case TKN_FORMAT_R8G8B8A8_UNORM:
-        return VK_FORMAT_R8G8B8A8_UNORM;
-    case TKN_FORMAT_R8G8B8A8_SRGB:
-        return VK_FORMAT_R8G8B8A8_SRGB;
-    case TKN_FORMAT_R16G16B16A16_SFLOAT:
-        return VK_FORMAT_R16G16B16A16_SFLOAT;
-    case TKN_FORMAT_R32G32B32A32_SFLOAT:
-        return VK_FORMAT_R32G32B32A32_SFLOAT;
-    case TKN_FORMAT_D32_SFLOAT:
-        return VK_FORMAT_D32_SFLOAT;
-    case TKN_FORMAT_D24_UNORM_S8_UINT:
-        return VK_FORMAT_D24_UNORM_S8_UINT;
-    case TKN_FORMAT_R8_UNORM:
-        return VK_FORMAT_R8_UNORM;
-    case TKN_FORMAT_R16_SFLOAT:
-        return VK_FORMAT_R16_SFLOAT;
-    case TKN_FORMAT_R32_SFLOAT:
-        return VK_FORMAT_R32_SFLOAT;
-    default:
-        tknError("Invalid image format: %d", format);
-        return VK_FORMAT_R8G8B8A8_UNORM;
-    }
-}
-
-VkImageAspectFlags tknImageAspectToVkImageAspectFlags(int aspectFlags)
-{
-    if (aspectFlags == 0)
-    {
-        return VK_IMAGE_ASPECT_COLOR_BIT;
-    }
-
-    VkImageAspectFlags result = 0;
-    if (aspectFlags & TKN_ASPECT_COLOR)
-        result |= VK_IMAGE_ASPECT_COLOR_BIT;
-    if (aspectFlags & TKN_ASPECT_DEPTH)
-        result |= VK_IMAGE_ASPECT_DEPTH_BIT;
-    if (aspectFlags & TKN_ASPECT_STENCIL)
-        result |= VK_IMAGE_ASPECT_STENCIL_BIT;
-
-    return result == 0 ? VK_IMAGE_ASPECT_COLOR_BIT : result;
 }

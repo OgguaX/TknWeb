@@ -45,12 +45,44 @@ class TknGfxContext {
     }
 
     /**
-     * @returns {Promise<void>}
+     * 从图像加载纹理到GPU
+     * @see copyExternalImageToTexture https://gpuweb.github.io/gpuweb/#dom-gpuqueue-copyexternalimagetotexture
+     * @param {Image|Canvas|OffscreenCanvas|ImageBitmap} imageSource - 图像源
+     * @param {number} width - 纹理宽度
+     * @param {number} height - 纹理高度
+     * @returns {GPUTexture}
+     * 
+     * @example
+     * // 用法示例
+     * const img = new Image();
+     * img.src = 'texture.png';
+     * img.onload = () => {
+     *     const texture = gfxContext.loadImageAsTexture(img, img.width, img.height);
+     * };
+     * 
+     * // copyExternalImageToTexture 内部实现:
+     * // device.queue.copyExternalImageToTexture(
+     * //     { source: imageBitmap },
+     * //     { texture },
+     * //     { width, height }
+     * // );
      */
-    async init() {
-        await this.create();
+    loadImageAsTexture(imageSource, width, height) {
+        const texture = this.device.createTexture({
+            size: { width, height, depthOrArrayLayers: 1 },
+            format: 'rgba8unorm',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            mipLevelCount: 1
+        });
+
+        this.device.queue.copyExternalImageToTexture(
+            { source: imageSource },
+            { texture, mipLevel: 0, origin: [0, 0, 0] },
+            { width, height, depthOrArrayLayers: 1 }
+        );
+
+        return texture;
     }
-}
 class DeferredRenderer {
     /**
      * @param {TknGfxContext} gfxContext
