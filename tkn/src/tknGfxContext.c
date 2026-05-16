@@ -500,6 +500,63 @@ static void tknUpdateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D tknSwap
     tknFree(tknSwapchainImages);
 }
 
+static void tknCreateSignals(TknGfxContext *pTknGfxContext)
+{
+    VkSemaphoreCreateInfo semaphoreCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+    };
+    VkDevice vkDevice = pTknGfxContext->vkDevice;
+    VkFenceCreateInfo fenceCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+    };
+    tknAssertVkResult(vkCreateSemaphore(vkDevice, &semaphoreCreateInfo, NULL, &pTknGfxContext->vkImageAvailableSemaphore));
+    tknAssertVkResult(vkCreateSemaphore(vkDevice, &semaphoreCreateInfo, NULL, &pTknGfxContext->vkRenderFinishedSemaphore));
+    tknAssertVkResult(vkCreateFence(vkDevice, &fenceCreateInfo, NULL, &pTknGfxContext->vkRenderFinishedFence));
+}
+static void tknDestroySignals(TknGfxContext *pTknGfxContext)
+{
+    VkDevice vkDevice = pTknGfxContext->vkDevice;
+    vkDestroySemaphore(vkDevice, pTknGfxContext->vkImageAvailableSemaphore, NULL);
+    vkDestroySemaphore(vkDevice, pTknGfxContext->vkRenderFinishedSemaphore, NULL);
+    vkDestroyFence(vkDevice, pTknGfxContext->vkRenderFinishedFence, NULL);
+}
+static void tknCreateCommandPools(TknGfxContext *pTknGfxContext)
+{
+    VkCommandPoolCreateInfo vkCommandPoolCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = NULL,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = pTknGfxContext->tknGfxQueueFamilyIndex,
+    };
+    tknAssertVkResult(vkCreateCommandPool(pTknGfxContext->vkDevice, &vkCommandPoolCreateInfo, NULL, &pTknGfxContext->vkGfxCommandPool));
+}
+static void tknDestroyCommandPools(TknGfxContext *pTknGfxContext)
+{
+    vkDestroyCommandPool(pTknGfxContext->vkDevice, pTknGfxContext->vkGfxCommandPool, NULL);
+}
+
+static void tknCreateVkCommandBuffers(TknGfxContext *pTknGfxContext)
+{
+    pTknGfxContext->vkGfxCommandBuffers = tknMalloc(sizeof(VkCommandBuffer) * pTknGfxContext->swapchainImageCount);
+    VkCommandBufferAllocateInfo vkCommandBufferAllocateInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = NULL,
+        .commandPool = pTknGfxContext->vkGfxCommandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = pTknGfxContext->swapchainImageCount,
+    };
+    tknAssertVkResult(vkAllocateCommandBuffers(pTknGfxContext->vkDevice, &vkCommandBufferAllocateInfo, pTknGfxContext->vkGfxCommandBuffers));
+}
+static void tknDestroyVkCommandBuffers(TknGfxContext *pTknGfxContext)
+{
+    vkFreeCommandBuffers(pTknGfxContext->vkDevice, pTknGfxContext->vkGfxCommandPool, pTknGfxContext->swapchainImageCount, pTknGfxContext->vkGfxCommandBuffers);
+    tknFree(pTknGfxContext->vkGfxCommandBuffers);
+}
+
 void *tknCreateGfxContextPtr(int extensionCount, const char **extensions, void *pSurface, int width, int height, int globalShaderPathCount, const char **globalShaderPaths)
 {
     TknGfxContext *pTknGfxContext = tknMalloc(sizeof(TknGfxContext));
@@ -526,22 +583,34 @@ void *tknCreateGfxContextPtr(int extensionCount, const char **extensions, void *
         .tknSwapchainImageViewPtrs = NULL,
         .vkSwapchain = VK_NULL_HANDLE,
 
+        .vkImageAvailableSemaphore = VK_NULL_HANDLE,
+        .vkRenderFinishedSemaphore = VK_NULL_HANDLE,
+        .vkRenderFinishedFence = VK_NULL_HANDLE,
+
         .vkGfxCommandPool = VK_NULL_HANDLE,
+        .vkGfxCommandBuffers = NULL,
     };
     tknCreateVkInstance(pTknGfxContext, extensionCount, extensions);
     tknPickPhysicalDevice(pTknGfxContext);
     tknPopulateLogicalDevice(pTknGfxContext);
-    VkExtent2D tknSwapchainExtent = {
-        .width = width,
-        .height = height,
-    };
-    tknCreateSwapchain(pTknGfxContext, tknSwapchainExtent);
+
+    tknCreateSwapchain(pTknGfxContext, (VkExtent2D){
+                                           .width = width,
+                                           .height = height,
+                                       });
+    tknCreateSignals(pTknGfxContext);
+    tknCreateCommandPools(pTknGfxContext);
+    tknCreateVkCommandBuffers(pTknGfxContext);
     return pTknGfxContext;
 }
 
 void tknDestroyGfxContextPtr(void *pTknGfxContext)
 {
     TknGfxContext *pTknGfxContextCasted = (TknGfxContext *)pTknGfxContext;
+    tknDestroyVkCommandBuffers(pTknGfxContextCasted);
+    tknDestroyCommandPools(pTknGfxContextCasted);
+    tknDestroySignals(pTknGfxContextCasted);
+    tknDestroySwapchain(pTknGfxContextCasted);
     tknCleanupLogicalDevice(pTknGfxContextCasted);
     tknDestroyVkInstance(pTknGfxContextCasted);
     tknFree(pTknGfxContextCasted);

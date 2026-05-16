@@ -54,8 +54,12 @@ typedef struct TknGfxContext
     TknImageView **tknSwapchainImageViewPtrs;
     VkSwapchainKHR vkSwapchain;
 
-    VkCommandPool vkGfxCommandPool;
+    VkSemaphore vkImageAvailableSemaphore;
+    VkSemaphore vkRenderFinishedSemaphore;
+    VkFence vkRenderFinishedFence;
 
+    VkCommandPool vkGfxCommandPool;
+    VkCommandBuffer *vkGfxCommandBuffers;
 } TknGfxContext;
 
 void tknAssertVkResult(VkResult vkResult);
