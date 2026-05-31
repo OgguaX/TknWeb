@@ -1,12 +1,15 @@
 const GPUTextureUsage = globalThis.GPUTextureUsage;
-const GPUShaderStage = globalThis.GPUShaderStage;
 const GPUBufferUsage = globalThis.GPUBufferUsage;
 
 class TknGfxContext {
     constructor(canvas) {
+        /** @type {HTMLCanvasElement} */
         this.canvas = canvas;
+        /** @type {GPUDevice | null} */
         this.device = null;
+        /** @type {GPUCanvasContext | null} */
         this.context = null;
+        /** @type {GPUTextureFormat | null} */
         this.format = null;
     }
 
@@ -34,8 +37,8 @@ class TknGfxContext {
 // ============================================================================
 // 延迟渲染器 - WebGPU实现（简化版）
 // ============================================================================
-
 class DeferredRenderer {
+    /** @param {TknGfxContext} gfxContext */
     constructor(gfxContext) {
         this.gfx = gfxContext;
         this.geometries = new Map();
@@ -197,12 +200,8 @@ class DeferredRenderer {
 
         const shaderModule = this.gfx.device.createShaderModule({ code: shaderCode });
 
-        const pipelineLayout = this.gfx.device.createPipelineLayout({
-            bindGroupLayouts: []
-        });
-
         this.gBufferPipeline = this.gfx.device.createRenderPipeline({
-            layout: pipelineLayout,
+            layout: 'auto',
             vertex: {
                 module: shaderModule,
                 entryPoint: 'vs_main',
@@ -309,21 +308,8 @@ class DeferredRenderer {
         
         const shaderModule = this.gfx.device.createShaderModule({ code: shaderCode });
         
-        const bindGroupLayout = this.gfx.device.createBindGroupLayout({
-            entries: [
-                { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-                { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-                { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-                { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }
-            ]
-        });
-        
-        const pipelineLayout = this.gfx.device.createPipelineLayout({
-            bindGroupLayouts: [bindGroupLayout]
-        });
-        
         this.lightingPipeline = this.gfx.device.createRenderPipeline({
-            layout: pipelineLayout,
+            layout: 'auto',
             vertex: {
                 module: shaderModule,
                 entryPoint: 'vs_main'
@@ -354,7 +340,7 @@ class DeferredRenderer {
                 { binding: 0, resource: this.gBufferPositionView },
                 { binding: 1, resource: this.gBufferNormalView },
                 { binding: 2, resource: this.gBufferAlbedoView },
-                { binding: 3, resource: this.sampler }
+                { binding: 3, resource: this.sampler },
             ]
         });
     }
@@ -490,7 +476,7 @@ class DeferredRenderer {
 
         lightingPass.setPipeline(this.lightingPipeline);
         lightingPass.setBindGroup(0, this.lightingBindGroup);
-        lightingPass.draw(6);  // 全屏四边形（2个三角形）
+        lightingPass.draw(6);
         lightingPass.end();
 
         this.gfx.device.queue.submit([encoder.finish()]);

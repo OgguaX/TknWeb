@@ -1,11 +1,21 @@
 #include <vulkan/vulkan.h>
 #include "tknCore.h"
-
+#include <spirv_reflect.h>
 #define TKN_ARRAY_COUNT(array) (NULL == array) ? 0 : (sizeof(array) / sizeof(array[0]))
-
-typedef struct TknBindGroup
+typedef enum
 {
-} TknBindGroup;
+    TKN_GLOBAL_DESCRIPTOR_SET,
+    TKN_RENDERPASS_DESCRIPTOR_SET,
+    TKN_PIPELINE_DESCRIPTOR_SET,
+    TKN_MAX_DESCRIPTOR_SET,
+} TknTickernelDescriptorSet;
+
+typedef enum
+{
+    TKN_VERTEX_BINDING_DESCRIPTION = 0,
+    TKN_INSTANCE_BINDING_DESCRIPTION = 1,
+    TKN_MAX_VERTEX_BINDING_DESCRIPTION = 2,
+} TknVertexBinding;
 
 typedef struct TknUniformBuffer
 {
@@ -18,6 +28,7 @@ typedef struct TknSampler
 typedef struct TknImage
 {
     VkImage vkImage;
+    VkFormat vkFormat;
     VkDeviceMemory vkDeviceMemory;
     TknHashSet tknImageViewPtrHashSet;
     VkExtent3D tknSwapchainExtent;
@@ -26,12 +37,30 @@ typedef struct TknImageView
 {
     TknImage *pTknImage;
     VkImageView vkImageView;
-    TknHashSet TknBindGroupPtrHashSet;
+    TknHashSet TknBindingGroupPtrHashSet;
 } TknImageView;
 
-typedef struct TknRenderPass
+typedef struct TknBindingGroup
 {
-} TknRenderPass;
+    VkDescriptorSetLayout vkDescriptorSetLayout;
+    VkDescriptorPool vkDescriptorPool;
+    VkDescriptorSet vkDescriptorSet;
+    uint32_t tknDescriptorCount;
+} TknBindingGroup;
+
+typedef struct TknVertexInputLayout
+{
+    TknVertexBinding tknVertexBinding;
+    uint32_t vkVertexInputAttributeDescriptionCount;
+    VkVertexInputAttributeDescription *vkVertexInputAttributeDescriptions;
+} TknVertexInputLayout;
+
+typedef struct TknPipeline
+{
+    VkPipeline vkPipeline;
+    VkPipelineLayout vkPipelineLayout;
+    TknVertexInputLayout tknVertexInputLayouts[TKN_MAX_VERTEX_BINDING_DESCRIPTION];
+} TknPipeline;
 
 typedef struct TknGfxContext
 {
@@ -47,7 +76,7 @@ typedef struct TknGfxContext
     VkDevice vkDevice;
     VkQueue vkGfxQueue;
     VkQueue vkPresentQueue;
-    
+
     VkSurfaceCapabilitiesKHR vkSurfaceCapabilities;
     uint32_t swapchainImageCount;
     TknImage **tknSwapchainImagePtrs;
@@ -60,6 +89,8 @@ typedef struct TknGfxContext
 
     VkCommandPool vkGfxCommandPool;
     VkCommandBuffer *vkGfxCommandBuffers;
+
+    TknBindingGroup *pTknGlobalBindingGroup;
 } TknGfxContext;
 
 void tknAssertVkResult(VkResult vkResult);
@@ -67,3 +98,6 @@ void tknCreateVkBuffer(TknGfxContext *pTknGfxContext, VkDeviceSize bufferSize, V
 void tknDestroyVkBuffer(TknGfxContext *pTknGfxContext, VkBuffer vkBuffer, VkDeviceMemory vkDeviceMemory);
 VkCommandBuffer tknBeginSingleTimeCommands(TknGfxContext *pTknGfxContext);
 void tknEndSingleTimeCommands(TknGfxContext *pTknGfxContext, VkCommandBuffer vkCommandBuffer);
+
+SpvReflectShaderModule tknCreateSpvReflectShaderModule(const char *filePath);
+void tknDestroySpvReflectShaderModule(SpvReflectShaderModule *pSpvReflectShaderModule);

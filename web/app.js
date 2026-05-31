@@ -546,7 +546,6 @@ class DeferredRenderer {
      */
     render() {
         const encoder = this.gfx.device.createCommandEncoder();
-
         // G-Buffer Pass
         {
             const pass = encoder.beginRenderPass({

@@ -97,3 +97,53 @@ void tknEndSingleTimeCommands(TknGfxContext *pTknGfxContext, VkCommandBuffer vkC
 
     vkFreeCommandBuffers(vkDevice, pTknGfxContext->vkGfxCommandPool, 1, &vkCommandBuffer);
 }
+
+SpvReflectShaderModule tknCreateSpvReflectShaderModule(const char *filePath)
+{
+    FILE *file = fopen(filePath, "rb");
+    if (!file)
+    {
+        tknError("Failed to open file: %s\n", filePath);
+    }
+    else
+    {
+        // File opened successfully
+    }
+    fseek(file, 0, SEEK_END);
+    size_t shaderSize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    if (shaderSize % 4 != 0)
+    {
+        fclose(file);
+        tknError("Invalid SPIR-V file size: %s\n", filePath);
+    }
+    else
+    {
+        // Valid SPIR-V file size
+    }
+    void *shaderCode = tknMalloc(shaderSize);
+    size_t bytesRead = fread(shaderCode, 1, shaderSize, file);
+
+    fclose(file);
+
+    if (bytesRead != shaderSize)
+    {
+        tknError("Failed to read entire file: %s\n", filePath);
+    }
+    else
+    {
+        // File read successfully
+    }
+    SpvReflectShaderModule spvReflectShaderModule;
+    SpvReflectResult spvReflectResult = spvReflectCreateShaderModule(shaderSize, shaderCode, &spvReflectShaderModule);
+    tknAssert(spvReflectResult == SPV_REFLECT_RESULT_SUCCESS, "Failed to reflect shader module: %s", filePath);
+    tknFree(shaderCode);
+
+    return spvReflectShaderModule;
+}
+
+void tknDestroySpvReflectShaderModule(SpvReflectShaderModule *pSpvReflectShaderModule)
+{
+    spvReflectDestroyShaderModule(pSpvReflectShaderModule);
+}

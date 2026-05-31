@@ -1,5 +1,6 @@
 #include "tknGfx.h"
 #include "tkn.h"
+
 static void tknCreateVkInstance(TknGfxContext *pTknGfxContext, int extensionCount, const char **extensions)
 {
     VkApplicationInfo appInfo = {
@@ -370,6 +371,7 @@ static void tknCreateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D targetS
     {
         TknImage *pTknImage = (TknImage *)tknMalloc(sizeof(TknImage));
         pTknImage->vkImage = tknSwapchainImages[i];
+        pTknImage->vkFormat = pTknGfxContext->tknSurfaceFormat.format;
         pTknImage->vkDeviceMemory = VK_NULL_HANDLE;
         pTknImage->tknImageViewPtrHashSet = tknCreateHashSet(sizeof(void *));
         pTknGfxContext->tknSwapchainImagePtrs[i] = pTknImage;
@@ -557,7 +559,17 @@ static void tknDestroyVkCommandBuffers(TknGfxContext *pTknGfxContext)
     tknFree(pTknGfxContext->vkGfxCommandBuffers);
 }
 
-void *tknCreateGfxContextPtr(int extensionCount, const char **extensions, void *pSurface, int width, int height, int globalShaderPathCount, const char **globalShaderPaths)
+static void tknCreateGlobalBindingGroup(TknGfxContext *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths)
+{
+    pTknGfxContext->pTknGlobalBindingGroup = tknCreateBindingGroup(pTknGfxContext, shaderPathCount, shaderPaths, TKN_GLOBAL_DESCRIPTOR_SET);
+}
+static void tknDestroyGlobalBindingGroup(TknGfxContext *pTknGfxContext)
+{
+    tknDestroyBindingGroup(pTknGfxContext, pTknGfxContext->pTknGlobalBindingGroup);
+    pTknGfxContext->pTknGlobalBindingGroup = NULL;
+}
+
+void *tknCreateGfxContextPtr(uint32_t extensionCount, const char **extensions, void *pSurface, uint32_t width, uint32_t height, uint32_t globalShaderPathCount, const char **globalShaderPaths)
 {
     TknGfxContext *pTknGfxContext = tknMalloc(sizeof(TknGfxContext));
     *pTknGfxContext = (TknGfxContext){
@@ -589,6 +601,9 @@ void *tknCreateGfxContextPtr(int extensionCount, const char **extensions, void *
 
         .vkGfxCommandPool = VK_NULL_HANDLE,
         .vkGfxCommandBuffers = NULL,
+
+        .pTknGlobalBindingGroup = NULL,
+
     };
     tknCreateVkInstance(pTknGfxContext, extensionCount, extensions);
     tknPickPhysicalDevice(pTknGfxContext);
@@ -601,12 +616,16 @@ void *tknCreateGfxContextPtr(int extensionCount, const char **extensions, void *
     tknCreateSignals(pTknGfxContext);
     tknCreateCommandPools(pTknGfxContext);
     tknCreateVkCommandBuffers(pTknGfxContext);
+
+    tknCreateGlobalBindingGroup(pTknGfxContext, globalShaderPathCount, globalShaderPaths);
     return pTknGfxContext;
 }
 
 void tknDestroyGfxContextPtr(void *pTknGfxContext)
 {
     TknGfxContext *pTknGfxContextCasted = (TknGfxContext *)pTknGfxContext;
+    tknDestroyGlobalBindingGroup(pTknGfxContextCasted);
+
     tknDestroyVkCommandBuffers(pTknGfxContextCasted);
     tknDestroyCommandPools(pTknGfxContextCasted);
     tknDestroySignals(pTknGfxContextCasted);

@@ -1,8 +1,8 @@
 #include "tknGfx.h"
 #include "tknCore.h"
 
-void *tknCreateImagePtr(void *pTknGfxContext, int dimension, int format, int mipLevelCount,
-                        int sampleCount, int width, int height, int depth, int imageUsageFlags)
+void *tknCreateImagePtr(void *pTknGfxContext, int dimension, int format, uint32_t mipLevelCount,
+                        int sampleCount, uint32_t width, uint32_t height, uint32_t depth, int imageUsageFlags)
 {
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     VkImageCreateInfo imageCreateInfo = {
@@ -12,11 +12,11 @@ void *tknCreateImagePtr(void *pTknGfxContext, int dimension, int format, int mip
         .imageType = (VkImageType)dimension,
         .format = (VkFormat)format,
         .extent = {
-            .width = (uint32_t)width,
-            .height = (uint32_t)height,
-            .depth = (uint32_t)depth,
+            .width = width,
+            .height = height,
+            .depth = depth,
         },
-        .mipLevels = (uint32_t)mipLevelCount,
+        .mipLevels = mipLevelCount,
         .arrayLayers = 1,
         .samples = (VkSampleCountFlagBits)sampleCount,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
@@ -29,6 +29,7 @@ void *tknCreateImagePtr(void *pTknGfxContext, int dimension, int format, int mip
 
     TknImage *pTknImage = (TknImage *)tknMalloc(sizeof(TknImage));
     tknAssertVkResult(vkCreateImage(pGfxContext->vkDevice, &imageCreateInfo, NULL, &pTknImage->vkImage));
+    pTknImage->vkFormat = (VkFormat)format;
     VkMemoryRequirements memoryRequirements;
     vkGetImageMemoryRequirements(pGfxContext->vkDevice, pTknImage->vkImage, &memoryRequirements);
     VkPhysicalDeviceMemoryProperties memoryProperties;

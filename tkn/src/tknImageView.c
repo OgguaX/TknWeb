@@ -1,8 +1,8 @@
 #include "tknGfx.h"
 #include "tknCore.h"
 
-void *tknCreateImageView(void *pTknGfxContext, int baseLayer, int layerCount, int aspectFlags,
-                         int baseMipLevel, int mipLevelCount, int dimension, int format,
+void *tknCreateImageView(void *pTknGfxContext, uint32_t baseLayer, uint32_t layerCount, int aspectFlags,
+                         uint32_t baseMipLevel, uint32_t mipLevelCount, int dimension, int format,
                          void *pTknImage)
 {
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
@@ -10,10 +10,10 @@ void *tknCreateImageView(void *pTknGfxContext, int baseLayer, int layerCount, in
 
     VkImageSubresourceRange subresourceRange = {
         .aspectMask = (VkImageAspectFlags)aspectFlags,
-        .baseMipLevel = (uint32_t)baseMipLevel,
-        .levelCount = (uint32_t)mipLevelCount,
-        .baseArrayLayer = (uint32_t)baseLayer,
-        .layerCount = (uint32_t)layerCount,
+        .baseMipLevel = baseMipLevel,
+        .levelCount = mipLevelCount,
+        .baseArrayLayer = baseLayer,
+        .layerCount = layerCount,
     };
 
     VkImageViewCreateInfo imageViewCreateInfo = {
@@ -35,7 +35,7 @@ void *tknCreateImageView(void *pTknGfxContext, int baseLayer, int layerCount, in
     TknImageView *pTknImageView = (TknImageView *)tknMalloc(sizeof(TknImageView));
     tknAssertVkResult(vkCreateImageView(pGfxContext->vkDevice, &imageViewCreateInfo, NULL, &pTknImageView->vkImageView));
     pTknImageView->pTknImage = pImage;
-    pTknImageView->TknBindGroupPtrHashSet = tknCreateHashSet(sizeof(void *));
+    pTknImageView->TknBindingGroupPtrHashSet = tknCreateHashSet(sizeof(void *));
 
     // Add image view pointer to the parent image's hash set
     void *pImageViewPtr = pTknImageView;
@@ -53,7 +53,7 @@ void tknDestroyImageView(void *pTknGfxContext, void *pTknImageView)
     void *pImageViewPtr = pImageView;
     tknRemoveFromHashSet(&pImageView->pTknImage->tknImageViewPtrHashSet, &pImageViewPtr);
 
-    tknDestroyHashSet(pImageView->TknBindGroupPtrHashSet);
+    tknDestroyHashSet(pImageView->TknBindingGroupPtrHashSet);
     vkDestroyImageView(pGfxContext->vkDevice, pImageView->vkImageView, NULL);
     pImageView->vkImageView = VK_NULL_HANDLE;
     pImageView->pTknImage = NULL;
