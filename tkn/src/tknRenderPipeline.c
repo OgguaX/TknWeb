@@ -53,12 +53,18 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
     TknVertexInputLayout *pMeshLayout = (TknVertexInputLayout *)pTknMeshVertexInputLayout;
     TknVertexInputLayout *pInstanceLayout = (TknVertexInputLayout *)pTknInstanceVertexInputLayout;
 
-    // 1. Load SPIRV and create shader modules
-    VkShaderModule *vkShaderModules = tknMalloc(sizeof(VkShaderModule) * spvPathCount);
-    VkPipelineShaderStageCreateInfo *pStages = tknMalloc(sizeof(VkPipelineShaderStageCreateInfo) * spvPathCount);
-    for (uint32_t i = 0; i < spvPathCount; i++)
+    // 1. Create temporary binding group layout to cache shader modules
+    void *pTknTempLayout = tknCreateBindingGroupLayout(spvPathCount, spvPaths, TKN_RENDERPASS_DESCRIPTOR_SET);
+    TknBindingGroupLayout *pRenderPassLayout = (TknBindingGroupLayout *)pTknTempLayout;
+
+    // 2. Get cached shader modules directly from binding group layout
+    VkShaderModule *vkShaderModules = tknMalloc(sizeof(VkShaderModule) * pRenderPassLayout->shaderPathCount);
+    VkPipelineShaderStageCreateInfo *pStages = tknMalloc(sizeof(VkPipelineShaderStageCreateInfo) * pRenderPassLayout->shaderPathCount);
+    
+    for (uint32_t i = 0; i < pRenderPassLayout->shaderPathCount; i++)
     {
-        SpvReflectShaderModule spvModule = tknCreateSpvReflectShaderModule(spvPaths[i]);
+        SpvReflectShaderModule spvModule = pRenderPassLayout->pSpvReflectShaderModules[i];
+        
         VkShaderModuleCreateInfo vkShaderModuleCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             .codeSize = spvModule._internal->spirv_size,
@@ -71,10 +77,9 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
             .module = vkShaderModules[i],
             .pName = "main",
         };
-        tknDestroySpvReflectShaderModule(&spvModule);
     }
 
-    // 2. Build vertex input state
+    // 3. Build vertex input state
     TknVertexInputLayout layouts[TKN_MAX_VERTEX_BINDING_DESCRIPTION] = {
         pMeshLayout != NULL ? *pMeshLayout : (TknVertexInputLayout){0},
         pInstanceLayout != NULL ? *pInstanceLayout : (TknVertexInputLayout){0},
@@ -121,7 +126,7 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
         .pVertexAttributeDescriptions = vkVertexInputAttributeDescriptions,
     };
 
-    // 3. Pipeline layout
+    // 4. Pipeline layout
     VkDescriptorSetLayout vkSetLayouts[TKN_MAX_DESCRIPTOR_SET];
     uint32_t setLayoutCount = 0;
     vkSetLayouts[setLayoutCount++] = pGfxContext->pTknGlobalBindingGroup->vkDescriptorSetLayout;
@@ -136,7 +141,7 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
     VkPipelineLayout vkPipelineLayout;
     tknAssertVkResult(vkCreatePipelineLayout(pGfxContext->vkDevice, &vkPipelineLayoutCreateInfo, NULL, &vkPipelineLayout));
 
-    // 4. Dynamic rendering
+    // 5. Dynamic rendering
     VkPipelineRenderingCreateInfoKHR vkRenderingCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
         .colorAttachmentCount = colorAttachmentCount,
@@ -144,11 +149,11 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
         .depthAttachmentFormat = (VkFormat)depthAttachmentFormat,
     };
 
-    // 5. Create graphics pipeline
+    // 6. Create graphics pipeline
     VkGraphicsPipelineCreateInfo vkPipelineCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &vkRenderingCreateInfo,
-        .stageCount = spvPathCount,
+        .stageCount = pRenderPassLayout->shaderPathCount,
         .pStages = pStages,
         .pVertexInputState = &vkVertexInputState,
         .pInputAssemblyState = (const VkPipelineInputAssemblyStateCreateInfo *)pVkPipelineInputAssemblyStateCreateInfo,
@@ -164,15 +169,18 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
     VkPipeline vkPipeline;
     tknAssertVkResult(vkCreateGraphicsPipelines(pGfxContext->vkDevice, VK_NULL_HANDLE, 1, &vkPipelineCreateInfo, NULL, &vkPipeline));
 
-    // 6. Cleanup temporaries
-    for (uint32_t i = 0; i < spvPathCount; i++)
+    // 7. Cleanup shader modules and temporary resources
+    for (uint32_t i = 0; i < pRenderPassLayout->shaderPathCount; i++)
         vkDestroyShaderModule(pGfxContext->vkDevice, vkShaderModules[i], NULL);
     tknFree(vkShaderModules);
     tknFree(pStages);
     if (vkVertexInputAttributeDescriptions != NULL)
         tknFree(vkVertexInputAttributeDescriptions);
 
-    // 7. Allocate and return pipeline
+    // 8. Cleanup temporary layout
+    tknDestroyBindingGroupLayout(pTknTempLayout);
+
+    // 9. Allocate and return pipeline
     TknPipeline *pTknPipeline = tknMalloc(sizeof(TknPipeline));
     *pTknPipeline = (TknPipeline){
         .vkPipeline = vkPipeline,

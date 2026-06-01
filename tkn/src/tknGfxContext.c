@@ -561,12 +561,15 @@ static void tknDestroyVkCommandBuffers(TknGfxContext *pTknGfxContext)
 
 static void tknCreateGlobalBindingGroup(TknGfxContext *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths)
 {
-    pTknGfxContext->pTknGlobalBindingGroup = tknCreateBindingGroup(pTknGfxContext, shaderPathCount, shaderPaths, TKN_GLOBAL_DESCRIPTOR_SET, 0, NULL);
+    pTknGfxContext->pTknGlobalBindingGroupLayout = tknCreateBindingGroupLayout(shaderPathCount, shaderPaths, TKN_GLOBAL_DESCRIPTOR_SET);
+    pTknGfxContext->pTknGlobalBindingGroup = tknCreateBindingGroup(pTknGfxContext, pTknGfxContext->pTknGlobalBindingGroupLayout, 0, NULL);
 }
 static void tknDestroyGlobalBindingGroup(TknGfxContext *pTknGfxContext)
 {
     tknDestroyBindingGroup(pTknGfxContext, pTknGfxContext->pTknGlobalBindingGroup);
     pTknGfxContext->pTknGlobalBindingGroup = NULL;
+    tknDestroyBindingGroupLayout(pTknGfxContext->pTknGlobalBindingGroupLayout);
+    pTknGfxContext->pTknGlobalBindingGroupLayout = NULL;
 }
 
 void *tknCreateGfxContextPtr(uint32_t extensionCount, const char **extensions, void *pSurface, uint32_t width, uint32_t height, uint32_t globalShaderPathCount, const char **globalShaderPaths)
@@ -602,6 +605,7 @@ void *tknCreateGfxContextPtr(uint32_t extensionCount, const char **extensions, v
         .vkGfxCommandPool = VK_NULL_HANDLE,
         .vkGfxCommandBuffers = NULL,
 
+        .pTknGlobalBindingGroupLayout = NULL,
         .pTknGlobalBindingGroup = NULL,
 
     };

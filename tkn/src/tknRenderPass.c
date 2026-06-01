@@ -1,6 +1,16 @@
 #include "tknGfx.h"
 #include "tknCore.h"
 
+void *tknCreateRenderPassBindingGroupLayout(uint32_t shaderPathCount, const char **shaderPaths)
+{
+    return tknCreateBindingGroupLayout(shaderPathCount, shaderPaths, TKN_RENDERPASS_DESCRIPTOR_SET);
+}
+
+void tknDestroyRenderPassBindingGroupLayout(void *pTknRenderPassBindingGroupLayout)
+{
+    tknDestroyBindingGroupLayout(pTknRenderPassBindingGroupLayout);
+}
+
 static void tknConvertClearColor(VkFormat format, const double in[4], VkClearColorValue *pOut)
 {
     switch (format)

@@ -1,9 +1,8 @@
 #include "tknGfx.h"
 #include "tknCore.h"
 
-void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths, uint32_t set, uint32_t resourceCount, void **resourcePtrs)
+void *tknCreateBindingGroupLayout(uint32_t shaderPathCount, const char **shaderPaths, uint32_t set)
 {
-    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     // Load all shader modules once
     SpvReflectShaderModule *modules = (SpvReflectShaderModule *)tknMalloc(sizeof(SpvReflectShaderModule) * shaderPathCount);
     for (uint32_t s = 0; s < shaderPathCount; s++)
@@ -11,7 +10,7 @@ void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, cons
         modules[s] = tknCreateSpvReflectShaderModule(shaderPaths[s]);
     }
 
-    // Pass 1: find the highest binding  across all shaders to size the merge table
+    // Pass 1: find the highest binding across all shaders to size the merge table
     uint32_t maxBinding = 0;
     for (uint32_t s = 0; s < shaderPathCount; s++)
     {
@@ -41,13 +40,13 @@ void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, cons
     // Merged binding table indexed by binding
     uint32_t bindingCount = maxBinding + 1;
     VkDescriptorType *vkDescriptorTypes = (VkDescriptorType *)tknMalloc(sizeof(VkDescriptorType) * bindingCount);
-    uint32_t *mergedCounts = (uint32_t *)tknMalloc(sizeof(uint32_t) * bindingCount);
-    VkShaderStageFlags *mergedStages = (VkShaderStageFlags *)tknMalloc(sizeof(VkShaderStageFlags) * bindingCount);
+    uint32_t *descriptorCounts = (uint32_t *)tknMalloc(sizeof(uint32_t) * bindingCount);
+    VkShaderStageFlags *vkShaderStageFlags = (VkShaderStageFlags *)tknMalloc(sizeof(VkShaderStageFlags) * bindingCount);
     bool *bindingUsed = (bool *)tknMalloc(sizeof(bool) * bindingCount);
     for (uint32_t i = 0; i < bindingCount; i++)
     {
         bindingUsed[i] = false;
-        mergedStages[i] = 0;
+        vkShaderStageFlags[i] = 0;
     }
 
     // Pass 2: fill merge table (reuses already-loaded modules)
@@ -75,23 +74,16 @@ void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, cons
                 if (!bindingUsed[binding])
                 {
                     vkDescriptorTypes[binding] = (VkDescriptorType)pBinding->descriptor_type;
-                    mergedCounts[binding] = pBinding->count > 0 ? pBinding->count : 1;
+                    descriptorCounts[binding] = pBinding->count > 0 ? pBinding->count : 1;
                     bindingUsed[binding] = true;
                 }
-                mergedStages[binding] |= stageFlag;
+                vkShaderStageFlags[binding] |= stageFlag;
             }
             break;
         }
 
         tknFree(ppSets);
     }
-
-    // Destroy modules now that reflection is done
-    for (uint32_t s = 0; s < shaderPathCount; s++)
-    {
-        tknDestroySpvReflectShaderModule(&modules[s]);
-    }
-    tknFree(modules);
 
     // Count distinct bindings actually used
     uint32_t usedBindingCount = 0;
@@ -102,6 +94,60 @@ void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, cons
     }
 
     tknAssert(usedBindingCount > 0, "set=%d not found in any shader", set);
+
+    // Copy shader paths for caching
+    const char **cachedShaderPaths = (const char **)tknMalloc(sizeof(const char *) * shaderPathCount);
+    for (uint32_t i = 0; i < shaderPathCount; i++)
+    {
+        cachedShaderPaths[i] = shaderPaths[i];
+    }
+
+    // Create and return layout
+    TknBindingGroupLayout *pLayout = (TknBindingGroupLayout *)tknMalloc(sizeof(TknBindingGroupLayout));
+    *pLayout = (TknBindingGroupLayout){
+        .bindingCount = bindingCount,
+        .usedBindingCount = usedBindingCount,
+        .vkDescriptorTypes = vkDescriptorTypes,
+        .descriptorCounts = descriptorCounts,
+        .vkShaderStageFlags = vkShaderStageFlags,
+        .bindingUsed = bindingUsed,
+        .shaderPathCount = shaderPathCount,
+        .shaderPaths = cachedShaderPaths,
+        .pSpvReflectShaderModules = modules,
+    };
+    return pLayout;
+}
+
+void tknDestroyBindingGroupLayout(void *pTknBindingGroupLayout)
+{
+    TknBindingGroupLayout *pLayout = (TknBindingGroupLayout *)pTknBindingGroupLayout;
+    tknFree(pLayout->vkDescriptorTypes);
+    tknFree(pLayout->descriptorCounts);
+    tknFree(pLayout->vkShaderStageFlags);
+    tknFree(pLayout->bindingUsed);
+    
+    // Destroy cached shader modules
+    for (uint32_t s = 0; s < pLayout->shaderPathCount; s++)
+    {
+        tknDestroySpvReflectShaderModule(&pLayout->pSpvReflectShaderModules[s]);
+    }
+    tknFree(pLayout->pSpvReflectShaderModules);
+    tknFree(pLayout->shaderPaths);
+    
+    tknFree(pLayout);
+}
+
+void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, uint32_t resourceCount, void **resourcePtrs)
+{
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    TknBindingGroupLayout *pLayout = (TknBindingGroupLayout *)pTknBindingGroupLayout;
+
+    uint32_t bindingCount = pLayout->bindingCount;
+    uint32_t usedBindingCount = pLayout->usedBindingCount;
+    VkDescriptorType *vkDescriptorTypes = pLayout->vkDescriptorTypes;
+    uint32_t *descriptorCounts = pLayout->descriptorCounts;
+    VkShaderStageFlags *vkShaderStageFlags = pLayout->vkShaderStageFlags;
+    bool *bindingUsed = pLayout->bindingUsed;
 
     // Build layout bindings and pool sizes (deduplicated by descriptor type) from merge table
     VkDescriptorSetLayoutBinding *layoutBindings = (VkDescriptorSetLayoutBinding *)tknMalloc(sizeof(VkDescriptorSetLayoutBinding) * usedBindingCount);
@@ -116,8 +162,8 @@ void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, cons
         layoutBindings[idx++] = (VkDescriptorSetLayoutBinding){
             .binding = i,
             .descriptorType = vkDescriptorTypes[i],
-            .descriptorCount = mergedCounts[i],
-            .stageFlags = mergedStages[i],
+            .descriptorCount = descriptorCounts[i],
+            .stageFlags = vkShaderStageFlags[i],
             .pImmutableSamplers = NULL,
         };
 
@@ -127,7 +173,7 @@ void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, cons
         {
             if (poolSizes[p].type == vkDescriptorTypes[i])
             {
-                poolSizes[p].descriptorCount += mergedCounts[i];
+                poolSizes[p].descriptorCount += descriptorCounts[i];
                 typeFound = true;
                 break;
             }
@@ -136,7 +182,7 @@ void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, cons
         {
             poolSizes[poolSizeCount++] = (VkDescriptorPoolSize){
                 .type = vkDescriptorTypes[i],
-                .descriptorCount = mergedCounts[i],
+                .descriptorCount = descriptorCounts[i],
             };
         }
     }
@@ -259,10 +305,6 @@ void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, cons
     // Cleanup temporaries
     tknFree(layoutBindings);
     tknFree(poolSizes);
-    tknFree(vkDescriptorTypes);
-    tknFree(bindingUsed);
-    tknFree(mergedCounts);
-    tknFree(mergedStages);
 
     // Return opaque TknBindingGroup
     TknBindingGroup *pBindingGroup = (TknBindingGroup *)tknMalloc(sizeof(TknBindingGroup));

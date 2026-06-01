@@ -40,6 +40,20 @@ typedef struct TknImageView
     TknHashSet TknBindingGroupPtrHashSet;
 } TknImageView;
 
+typedef struct TknBindingGroupLayout
+{
+    uint32_t bindingCount;
+    uint32_t usedBindingCount;
+    VkDescriptorType *vkDescriptorTypes;
+    uint32_t *descriptorCounts;
+    VkShaderStageFlags *vkShaderStageFlags;
+    bool *bindingUsed;
+
+    uint32_t shaderPathCount;
+    const char **shaderPaths;
+    SpvReflectShaderModule *pSpvReflectShaderModules;
+} TknBindingGroupLayout;
+
 typedef struct TknBindingGroup
 {
     VkDescriptorSetLayout vkDescriptorSetLayout;
@@ -89,6 +103,7 @@ typedef struct TknGfxContext
     VkCommandPool vkGfxCommandPool;
     VkCommandBuffer *vkGfxCommandBuffers;
 
+    TknBindingGroupLayout *pTknGlobalBindingGroupLayout;
     TknBindingGroup *pTknGlobalBindingGroup;
 } TknGfxContext;
 
@@ -100,3 +115,6 @@ void tknEndSingleTimeCommands(TknGfxContext *pTknGfxContext, VkCommandBuffer vkC
 
 SpvReflectShaderModule tknCreateSpvReflectShaderModule(const char *filePath);
 void tknDestroySpvReflectShaderModule(SpvReflectShaderModule *pSpvReflectShaderModule);
+
+void *tknCreateBindingGroupLayout(uint32_t shaderPathCount, const char **shaderPaths, uint32_t set);
+void tknDestroyBindingGroupLayout(void *pTknBindingGroupLayout);
