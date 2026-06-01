@@ -12,9 +12,8 @@ extern void tknDestroyImagePtr(void *pTknGfxContext, void *pTknImage);
 extern void *tknCreateImageView(void *pTknGfxContext, uint32_t baseLayer, uint32_t layerCount, int aspectFlags, uint32_t baseMipLevel, uint32_t mipLevelCount, int dimension, int format, void *pTknImage);
 extern void tknDestroyImageView(void *pTknGfxContext, void *pTknImageView);
 
-extern void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths, uint32_t set);
+extern void *tknCreateBindingGroup(void *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths, uint32_t set, uint32_t resourceCount, void **resourcePtrs);
 extern void tknDestroyBindingGroup(void *pTknGfxContext, void *pTknBindingGroup);
-extern void tknUpdateBindingGroup(void *pTknGfxContext, void *pTknBindingGroup, uint32_t writeCount, void *pVkWriteDescriptorSets);
 
 extern void tknBeginRenderPass(void *pTknGfxContext, void *pVkCommandBuffer, uint32_t colorAttachmentCount, void **colorImageViewPtrs, const int *loadOps, const int *storeOps, const double (*colorClearValues)[4], void *pTknDepthImageView, int depthLoadOp, int depthStoreOp, float depthClearValue, uint32_t stencilClearValue, uint32_t width, uint32_t height);
 extern void tknEndRenderPass(void *pTknGfxContext, void *pVkCommandBuffer);

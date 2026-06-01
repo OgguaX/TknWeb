@@ -561,7 +561,7 @@ static void tknDestroyVkCommandBuffers(TknGfxContext *pTknGfxContext)
 
 static void tknCreateGlobalBindingGroup(TknGfxContext *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths)
 {
-    pTknGfxContext->pTknGlobalBindingGroup = tknCreateBindingGroup(pTknGfxContext, shaderPathCount, shaderPaths, TKN_GLOBAL_DESCRIPTOR_SET);
+    pTknGfxContext->pTknGlobalBindingGroup = tknCreateBindingGroup(pTknGfxContext, shaderPathCount, shaderPaths, TKN_GLOBAL_DESCRIPTOR_SET, 0, NULL);
 }
 static void tknDestroyGlobalBindingGroup(TknGfxContext *pTknGfxContext)
 {

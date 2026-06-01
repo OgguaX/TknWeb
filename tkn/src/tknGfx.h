@@ -45,7 +45,6 @@ typedef struct TknBindingGroup
     VkDescriptorSetLayout vkDescriptorSetLayout;
     VkDescriptorPool vkDescriptorPool;
     VkDescriptorSet vkDescriptorSet;
-    uint32_t tknDescriptorCount;
 } TknBindingGroup;
 
 typedef struct TknVertexInputLayout
