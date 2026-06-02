@@ -105,6 +105,8 @@ typedef struct TknGfxContext
 
     TknBindingGroupLayout *pTknGlobalBindingGroupLayout;
     TknBindingGroup *pTknGlobalBindingGroup;
+
+    uint32_t frameCount;
 } TknGfxContext;
 
 void tknAssertVkResult(VkResult vkResult);

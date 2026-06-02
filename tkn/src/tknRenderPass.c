@@ -95,10 +95,10 @@ static void tknTransitionImageLayout(VkCommandBuffer vkCommandBuffer,
     vkCmdPipelineBarrier(vkCommandBuffer, srcStage, dstStage, 0, 0, NULL, 0, NULL, 1, &barrier);
 }
 
-void tknBeginRenderPass(void *pTknGfxContext, void *pVkCommandBuffer, uint32_t colorAttachmentCount, void **colorImageViewPtrs, const int *loadOps, const int *storeOps, const double (*colorClearValues)[4], void *pTknDepthImageView, int depthLoadOp, int depthStoreOp, float depthClearValue, uint32_t stencilClearValue, uint32_t width, uint32_t height)
+void tknBeginRenderPass(void *pTknGfxContext, uint32_t colorAttachmentCount, void **colorImageViewPtrs, const int *loadOps, const int *storeOps, const double (*colorClearValues)[4], void *pTknDepthImageView, int depthLoadOp, int depthStoreOp, float depthClearValue, uint32_t stencilClearValue, uint32_t width, uint32_t height)
 {
-    (void)pTknGfxContext;
-    VkCommandBuffer vkCommandBuffer = (VkCommandBuffer)pVkCommandBuffer;
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[pGfxContext->frameCount % pGfxContext->swapchainImageCount];
     TknImageView *pDepthView = (TknImageView *)pTknDepthImageView;
     VkExtent2D extent = {.width = width, .height = height};
 
@@ -208,9 +208,9 @@ void tknBeginRenderPass(void *pTknGfxContext, void *pVkCommandBuffer, uint32_t c
     vkCmdSetScissor(vkCommandBuffer, 0, 1, &scissor);
 }
 
-void tknEndRenderPass(void *pTknGfxContext,
-                      void *pVkCommandBuffer)
+void tknEndRenderPass(void *pTknGfxContext)
 {
-    (void)pTknGfxContext;
-    vkCmdEndRendering((VkCommandBuffer)pVkCommandBuffer);
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[pGfxContext->frameCount % pGfxContext->swapchainImageCount];
+    vkCmdEndRendering(vkCommandBuffer);
 }

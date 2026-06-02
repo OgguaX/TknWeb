@@ -63,6 +63,8 @@ void tknDestroyImagePtr(void *pTknGfxContext, void *pTknImage)
 {
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     TknImage *pImage = (TknImage *)pTknImage;
+    tknAssert(pImage->tknImageViewPtrHashSet.count == 0, "Cannot destroy image while it still has image views referencing it");
+
     vkDestroyImage(pGfxContext->vkDevice, pImage->vkImage, NULL);
     pImage->vkImage = VK_NULL_HANDLE;
 
