@@ -46,25 +46,25 @@ static uint32_t tknComputeStride(const TknVertexInputLayout *pLayout)
     return stride;
 }
 
-void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, const int *pColorAttachmentFormats, int depthAttachmentFormat, void *pTknRenderPassBindingGroup, uint32_t spvPathCount, const char **spvPaths, void *pTknMeshVertexInputLayout, void *pTknInstanceVertexInputLayout, void *pVkPipelineInputAssemblyStateCreateInfo, void *pVkPipelineViewportStateCreateInfo, void *pVkPipelineRasterizationStateCreateInfo, void *pVkPipelineMultisampleStateCreateInfo, void *pVkPipelineDepthStencilStateCreateInfo, void *pVkPipelineColorBlendStateCreateInfo, void *pVkPipelineDynamicStateCreateInfo)
+void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, const int *pColorAttachmentFormats, int depthAttachmentFormat, void *pTknRenderPassBindingGroupLayout, uint32_t spvPathCount, const char **spvPaths, void *pTknMeshVertexInputLayout, void *pTknInstanceVertexInputLayout, void *pVkPipelineInputAssemblyStateCreateInfo, void *pVkPipelineViewportStateCreateInfo, void *pVkPipelineRasterizationStateCreateInfo, void *pVkPipelineMultisampleStateCreateInfo, void *pVkPipelineDepthStencilStateCreateInfo, void *pVkPipelineColorBlendStateCreateInfo, void *pVkPipelineDynamicStateCreateInfo)
 {
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
-    TknBindingGroup *pRenderPassBindingGroup = (TknBindingGroup *)pTknRenderPassBindingGroup;
     TknVertexInputLayout *pMeshLayout = (TknVertexInputLayout *)pTknMeshVertexInputLayout;
     TknVertexInputLayout *pInstanceLayout = (TknVertexInputLayout *)pTknInstanceVertexInputLayout;
+    TknBindingGroupLayout *pRenderPassBindingGroupLayout = (TknBindingGroupLayout *)pTknRenderPassBindingGroupLayout;
 
-    // 1. Create temporary binding group layout to cache shader modules
-    void *pTknTempLayout = tknCreateBindingGroupLayout(spvPathCount, spvPaths, TKN_RENDERPASS_DESCRIPTOR_SET);
-    TknBindingGroupLayout *pRenderPassLayout = (TknBindingGroupLayout *)pTknTempLayout;
+    // Create pipeline binding group layout from shaders
+    void *pTknPipelineLayout = tknCreateBindingGroupLayout(pGfxContext, spvPathCount, spvPaths, TKN_PIPELINE_DESCRIPTOR_SET);
+    TknBindingGroupLayout *pPipelineGroupLayout = (TknBindingGroupLayout *)pTknPipelineLayout;
 
-    // 2. Get cached shader modules directly from binding group layout
-    VkShaderModule *vkShaderModules = tknMalloc(sizeof(VkShaderModule) * pRenderPassLayout->shaderPathCount);
-    VkPipelineShaderStageCreateInfo *pStages = tknMalloc(sizeof(VkPipelineShaderStageCreateInfo) * pRenderPassLayout->shaderPathCount);
-    
-    for (uint32_t i = 0; i < pRenderPassLayout->shaderPathCount; i++)
+    // Get shader modules
+    VkShaderModule *vkShaderModules = tknMalloc(sizeof(VkShaderModule) * pPipelineGroupLayout->shaderPathCount);
+    VkPipelineShaderStageCreateInfo *pStages = tknMalloc(sizeof(VkPipelineShaderStageCreateInfo) * pPipelineGroupLayout->shaderPathCount);
+
+    for (uint32_t i = 0; i < pPipelineGroupLayout->shaderPathCount; i++)
     {
-        SpvReflectShaderModule spvModule = pRenderPassLayout->pSpvReflectShaderModules[i];
-        
+        SpvReflectShaderModule spvModule = pPipelineGroupLayout->pSpvReflectShaderModules[i];
+
         VkShaderModuleCreateInfo vkShaderModuleCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             .codeSize = spvModule._internal->spirv_size,
@@ -79,7 +79,7 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
         };
     }
 
-    // 3. Build vertex input state
+    // Build vertex input state
     TknVertexInputLayout layouts[TKN_MAX_VERTEX_BINDING_DESCRIPTION] = {
         pMeshLayout != NULL ? *pMeshLayout : (TknVertexInputLayout){0},
         pInstanceLayout != NULL ? *pInstanceLayout : (TknVertexInputLayout){0},
@@ -126,22 +126,21 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
         .pVertexAttributeDescriptions = vkVertexInputAttributeDescriptions,
     };
 
-    // 4. Pipeline layout
-    VkDescriptorSetLayout vkSetLayouts[TKN_MAX_DESCRIPTOR_SET];
-    uint32_t setLayoutCount = 0;
-    vkSetLayouts[setLayoutCount++] = pGfxContext->pTknGlobalBindingGroup->vkDescriptorSetLayout;
-    if (pRenderPassBindingGroup != NULL)
-        vkSetLayouts[setLayoutCount++] = pRenderPassBindingGroup->vkDescriptorSetLayout;
+    // Pipeline layout with all three descriptor set layouts
+    VkDescriptorSetLayout vkSetLayouts[TKN_MAX_DESCRIPTOR_SET] = {0};
+    vkSetLayouts[TKN_GLOBAL_DESCRIPTOR_SET] = pGfxContext->pTknGlobalBindingGroupLayout->vkDescriptorSetLayout;
+    vkSetLayouts[TKN_RENDERPASS_DESCRIPTOR_SET] = pRenderPassBindingGroupLayout->vkDescriptorSetLayout;
+    vkSetLayouts[TKN_PIPELINE_DESCRIPTOR_SET] = pPipelineGroupLayout->vkDescriptorSetLayout;
 
     VkPipelineLayoutCreateInfo vkPipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = setLayoutCount,
+        .setLayoutCount = TKN_MAX_DESCRIPTOR_SET,
         .pSetLayouts = vkSetLayouts,
     };
     VkPipelineLayout vkPipelineLayout;
     tknAssertVkResult(vkCreatePipelineLayout(pGfxContext->vkDevice, &vkPipelineLayoutCreateInfo, NULL, &vkPipelineLayout));
 
-    // 5. Dynamic rendering
+    // Dynamic rendering
     VkPipelineRenderingCreateInfoKHR vkRenderingCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
         .colorAttachmentCount = colorAttachmentCount,
@@ -149,11 +148,11 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
         .depthAttachmentFormat = (VkFormat)depthAttachmentFormat,
     };
 
-    // 6. Create graphics pipeline
+    // Create graphics pipeline
     VkGraphicsPipelineCreateInfo vkPipelineCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &vkRenderingCreateInfo,
-        .stageCount = pRenderPassLayout->shaderPathCount,
+        .stageCount = pPipelineGroupLayout->shaderPathCount,
         .pStages = pStages,
         .pVertexInputState = &vkVertexInputState,
         .pInputAssemblyState = (const VkPipelineInputAssemblyStateCreateInfo *)pVkPipelineInputAssemblyStateCreateInfo,
@@ -169,22 +168,19 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
     VkPipeline vkPipeline;
     tknAssertVkResult(vkCreateGraphicsPipelines(pGfxContext->vkDevice, VK_NULL_HANDLE, 1, &vkPipelineCreateInfo, NULL, &vkPipeline));
 
-    // 7. Cleanup shader modules and temporary resources
-    for (uint32_t i = 0; i < pRenderPassLayout->shaderPathCount; i++)
+    // Cleanup temporary resources
+    for (uint32_t i = 0; i < pPipelineGroupLayout->shaderPathCount; i++)
         vkDestroyShaderModule(pGfxContext->vkDevice, vkShaderModules[i], NULL);
     tknFree(vkShaderModules);
     tknFree(pStages);
     if (vkVertexInputAttributeDescriptions != NULL)
         tknFree(vkVertexInputAttributeDescriptions);
 
-    // 8. Cleanup temporary layout
-    tknDestroyBindingGroupLayout(pTknTempLayout);
-
-    // 9. Allocate and return pipeline
     TknPipeline *pTknPipeline = tknMalloc(sizeof(TknPipeline));
     *pTknPipeline = (TknPipeline){
         .vkPipeline = vkPipeline,
         .vkPipelineLayout = vkPipelineLayout,
+        .pTknPipelineBindingGroupLayout = pPipelineGroupLayout,
         .tknVertexInputLayouts = {layouts[0], layouts[1]},
     };
     return pTknPipeline;
@@ -194,7 +190,36 @@ void tknDestroyPipelinePtr(void *pTknGfxContext, void *pTknPipeline)
 {
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     TknPipeline *pPipeline = (TknPipeline *)pTknPipeline;
+
     vkDestroyPipeline(pGfxContext->vkDevice, pPipeline->vkPipeline, NULL);
     vkDestroyPipelineLayout(pGfxContext->vkDevice, pPipeline->vkPipelineLayout, NULL);
+
+    // Destroy cached binding group layout
+    if (pPipeline->pTknPipelineBindingGroupLayout != NULL)
+    {
+        tknDestroyBindingGroupLayout(pGfxContext, pPipeline->pTknPipelineBindingGroupLayout);
+        pPipeline->pTknPipelineBindingGroupLayout = NULL;
+    }
+
     tknFree(pPipeline);
+}
+
+void tknSetPipelinePtr(void *pTknGfxContext, void *pTknPipeline, void *pTknRenderPassBindingGroup, void *pTknPipelineBindingGroup)
+{
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    TknPipeline *pPipeline = (TknPipeline *)pTknPipeline;
+    TknBindingGroup *pRenderPassBindingGroup = (TknBindingGroup *)pTknRenderPassBindingGroup;
+    TknBindingGroup *pPipelineBindingGroup = (TknBindingGroup *)pTknPipelineBindingGroup;
+
+    uint32_t frameIndex = pGfxContext->frameCount % pGfxContext->swapchainImageCount;
+    VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[frameIndex];
+
+    VkDescriptorSet vkDescriptorSets[TKN_MAX_DESCRIPTOR_SET] = {
+        pGfxContext->pTknGlobalBindingGroup->vkDescriptorSet,
+        pRenderPassBindingGroup != NULL ? pRenderPassBindingGroup->vkDescriptorSet : VK_NULL_HANDLE,
+        pPipelineBindingGroup != NULL ? pPipelineBindingGroup->vkDescriptorSet : VK_NULL_HANDLE,
+    };
+
+    vkCmdBindDescriptorSets(vkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pPipeline->vkPipelineLayout, 0, TKN_MAX_DESCRIPTOR_SET, vkDescriptorSets, 0, NULL);
+    vkCmdBindPipeline(vkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pPipeline->vkPipeline);
 }

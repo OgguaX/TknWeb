@@ -52,11 +52,13 @@ typedef struct TknBindingGroupLayout
     uint32_t shaderPathCount;
     const char **shaderPaths;
     SpvReflectShaderModule *pSpvReflectShaderModules;
+    
+    VkDescriptorSetLayout vkDescriptorSetLayout;
 } TknBindingGroupLayout;
 
 typedef struct TknBindingGroup
 {
-    VkDescriptorSetLayout vkDescriptorSetLayout;
+    TknBindingGroupLayout *pLayout;
     VkDescriptorPool vkDescriptorPool;
     VkDescriptorSet vkDescriptorSet;
 } TknBindingGroup;
@@ -72,6 +74,7 @@ typedef struct TknPipeline
 {
     VkPipeline vkPipeline;
     VkPipelineLayout vkPipelineLayout;
+    TknBindingGroupLayout *pTknPipelineBindingGroupLayout;
     TknVertexInputLayout tknVertexInputLayouts[TKN_MAX_VERTEX_BINDING_DESCRIPTION];
 } TknPipeline;
 
@@ -118,5 +121,5 @@ void tknEndSingleTimeCommands(TknGfxContext *pTknGfxContext, VkCommandBuffer vkC
 SpvReflectShaderModule tknCreateSpvReflectShaderModule(const char *filePath);
 void tknDestroySpvReflectShaderModule(SpvReflectShaderModule *pSpvReflectShaderModule);
 
-void *tknCreateBindingGroupLayout(uint32_t shaderPathCount, const char **shaderPaths, uint32_t set);
-void tknDestroyBindingGroupLayout(void *pTknBindingGroupLayout);
+void *tknCreateBindingGroupLayout(void *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths, uint32_t set);
+void tknDestroyBindingGroupLayout(void *pTknGfxContext, void *pTknBindingGroupLayout);

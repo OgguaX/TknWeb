@@ -1,8 +1,10 @@
 #include "tknGfx.h"
 #include "tknCore.h"
 
-void *tknCreateBindingGroupLayout(uint32_t shaderPathCount, const char **shaderPaths, uint32_t set)
+void *tknCreateBindingGroupLayout(void *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths, uint32_t set)
 {
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    
     // Load all shader modules once
     SpvReflectShaderModule *modules = (SpvReflectShaderModule *)tknMalloc(sizeof(SpvReflectShaderModule) * shaderPathCount);
     for (uint32_t s = 0; s < shaderPathCount; s++)
@@ -95,6 +97,34 @@ void *tknCreateBindingGroupLayout(uint32_t shaderPathCount, const char **shaderP
 
     tknAssert(usedBindingCount > 0, "set=%d not found in any shader", set);
 
+    // Build layout bindings from merge table
+    VkDescriptorSetLayoutBinding *layoutBindings = (VkDescriptorSetLayoutBinding *)tknMalloc(sizeof(VkDescriptorSetLayoutBinding) * usedBindingCount);
+    uint32_t idx = 0;
+    for (uint32_t i = 0; i < bindingCount; i++)
+    {
+        if (!bindingUsed[i])
+            continue;
+        layoutBindings[idx++] = (VkDescriptorSetLayoutBinding){
+            .binding = i,
+            .descriptorType = vkDescriptorTypes[i],
+            .descriptorCount = descriptorCounts[i],
+            .stageFlags = vkShaderStageFlags[i],
+            .pImmutableSamplers = NULL,
+        };
+    }
+
+    // Create VkDescriptorSetLayout
+    VkDescriptorSetLayoutCreateInfo layoutInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .bindingCount = usedBindingCount,
+        .pBindings = layoutBindings,
+    };
+    VkDescriptorSetLayout vkDescriptorSetLayout;
+    tknAssertVkResult(vkCreateDescriptorSetLayout(pGfxContext->vkDevice, &layoutInfo, NULL, &vkDescriptorSetLayout));
+    tknFree(layoutBindings);
+
     // Copy shader paths for caching
     const char **cachedShaderPaths = (const char **)tknMalloc(sizeof(const char *) * shaderPathCount);
     for (uint32_t i = 0; i < shaderPathCount; i++)
@@ -114,13 +144,20 @@ void *tknCreateBindingGroupLayout(uint32_t shaderPathCount, const char **shaderP
         .shaderPathCount = shaderPathCount,
         .shaderPaths = cachedShaderPaths,
         .pSpvReflectShaderModules = modules,
+        .vkDescriptorSetLayout = vkDescriptorSetLayout,
     };
     return pLayout;
 }
-
-void tknDestroyBindingGroupLayout(void *pTknBindingGroupLayout)
+void tknDestroyBindingGroupLayout(void *pTknGfxContext, void *pTknBindingGroupLayout)
 {
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     TknBindingGroupLayout *pLayout = (TknBindingGroupLayout *)pTknBindingGroupLayout;
+    // Destroy the Vulkan descriptor set layout
+    if (pLayout->vkDescriptorSetLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorSetLayout(pGfxContext->vkDevice, pLayout->vkDescriptorSetLayout, NULL);
+        pLayout->vkDescriptorSetLayout = VK_NULL_HANDLE;
+    }
     tknFree(pLayout->vkDescriptorTypes);
     tknFree(pLayout->descriptorCounts);
     tknFree(pLayout->vkShaderStageFlags);
@@ -148,24 +185,16 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
     uint32_t *descriptorCounts = pLayout->descriptorCounts;
     VkShaderStageFlags *vkShaderStageFlags = pLayout->vkShaderStageFlags;
     bool *bindingUsed = pLayout->bindingUsed;
+    VkDescriptorSetLayout vkDescriptorSetLayout = pLayout->vkDescriptorSetLayout;
 
-    // Build layout bindings and pool sizes (deduplicated by descriptor type) from merge table
-    VkDescriptorSetLayoutBinding *layoutBindings = (VkDescriptorSetLayoutBinding *)tknMalloc(sizeof(VkDescriptorSetLayoutBinding) * usedBindingCount);
+    // Build pool sizes (deduplicated by descriptor type) from merge table
     VkDescriptorPoolSize *poolSizes = (VkDescriptorPoolSize *)tknMalloc(sizeof(VkDescriptorPoolSize) * usedBindingCount);
     uint32_t poolSizeCount = 0;
 
-    uint32_t idx = 0;
     for (uint32_t i = 0; i < bindingCount; i++)
     {
         if (!bindingUsed[i])
             continue;
-        layoutBindings[idx++] = (VkDescriptorSetLayoutBinding){
-            .binding = i,
-            .descriptorType = vkDescriptorTypes[i],
-            .descriptorCount = descriptorCounts[i],
-            .stageFlags = vkShaderStageFlags[i],
-            .pImmutableSamplers = NULL,
-        };
 
         // Merge into pool sizes, accumulating counts for the same type
         bool typeFound = false;
@@ -187,17 +216,6 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
         }
     }
 
-    // Create VkDescriptorSetLayout
-    VkDescriptorSetLayoutCreateInfo layoutInfo = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
-        .bindingCount = usedBindingCount,
-        .pBindings = layoutBindings,
-    };
-    VkDescriptorSetLayout vkDescriptorSetLayout;
-    tknAssertVkResult(vkCreateDescriptorSetLayout(pGfxContext->vkDevice, &layoutInfo, NULL, &vkDescriptorSetLayout));
-
     // Create VkDescriptorPool
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -210,7 +228,7 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
     VkDescriptorPool vkDescriptorPool;
     tknAssertVkResult(vkCreateDescriptorPool(pGfxContext->vkDevice, &poolInfo, NULL, &vkDescriptorPool));
 
-    // Allocate VkDescriptorSet
+    // Allocate VkDescriptorSet from layout
     VkDescriptorSetAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .pNext = NULL,
@@ -303,13 +321,12 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
     }
 
     // Cleanup temporaries
-    tknFree(layoutBindings);
     tknFree(poolSizes);
 
-    // Return opaque TknBindingGroup
+    // Return opaque TknBindingGroup with reference to layout
     TknBindingGroup *pBindingGroup = (TknBindingGroup *)tknMalloc(sizeof(TknBindingGroup));
     *pBindingGroup = (TknBindingGroup){
-        .vkDescriptorSetLayout = vkDescriptorSetLayout,
+        .pLayout = pLayout,
         .vkDescriptorPool = vkDescriptorPool,
         .vkDescriptorSet = vkDescriptorSet,
     };
@@ -322,6 +339,6 @@ void tknDestroyBindingGroup(void *pTknGfxContext, void *pTknBindingGroup)
     TknBindingGroup *pBindingGroup = (TknBindingGroup *)pTknBindingGroup;
     // Destroying the pool implicitly frees the descriptor set
     vkDestroyDescriptorPool(pGfxContext->vkDevice, pBindingGroup->vkDescriptorPool, NULL);
-    vkDestroyDescriptorSetLayout(pGfxContext->vkDevice, pBindingGroup->vkDescriptorSetLayout, NULL);
+    // Note: Do NOT destroy vkDescriptorSetLayout here - it's owned by the layout
     tknFree(pBindingGroup);
 }

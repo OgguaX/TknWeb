@@ -47,6 +47,48 @@
             ]
         },
         {
+            "label": "Clang: Build Tickernel Dylib",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "cd /Users/oggua/Documents/GitHub/TknWeb && rm -rf build && cmake -B build -S . && cmake --build build --target Tickernel"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "Clang: Clean Build Tickernel Dylib",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "cd /Users/oggua/Documents/GitHub/TknWeb && rm -rf build && cmake -B build -S . && cmake --build build --target Tickernel"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
             "label": "Clang: Watch",
             "type": "shell",
             "command": "bash",

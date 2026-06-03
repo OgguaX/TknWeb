@@ -561,14 +561,14 @@ static void tknDestroyVkCommandBuffers(TknGfxContext *pTknGfxContext)
 
 static void tknCreateGlobalBindingGroup(TknGfxContext *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths)
 {
-    pTknGfxContext->pTknGlobalBindingGroupLayout = tknCreateBindingGroupLayout(shaderPathCount, shaderPaths, TKN_GLOBAL_DESCRIPTOR_SET);
+    pTknGfxContext->pTknGlobalBindingGroupLayout = tknCreateBindingGroupLayout(pTknGfxContext, shaderPathCount, shaderPaths, TKN_GLOBAL_DESCRIPTOR_SET);
     pTknGfxContext->pTknGlobalBindingGroup = tknCreateBindingGroup(pTknGfxContext, pTknGfxContext->pTknGlobalBindingGroupLayout, 0, NULL);
 }
 static void tknDestroyGlobalBindingGroup(TknGfxContext *pTknGfxContext)
 {
     tknDestroyBindingGroup(pTknGfxContext, pTknGfxContext->pTknGlobalBindingGroup);
     pTknGfxContext->pTknGlobalBindingGroup = NULL;
-    tknDestroyBindingGroupLayout(pTknGfxContext->pTknGlobalBindingGroupLayout);
+    tknDestroyBindingGroupLayout(pTknGfxContext, pTknGfxContext->pTknGlobalBindingGroupLayout);
     pTknGfxContext->pTknGlobalBindingGroupLayout = NULL;
 }
 
@@ -608,6 +608,7 @@ void *tknCreateGfxContextPtr(uint32_t extensionCount, const char **extensions, v
         .pTknGlobalBindingGroupLayout = NULL,
         .pTknGlobalBindingGroup = NULL,
 
+        .frameCount = 0,
     };
     tknCreateVkInstance(pTknGfxContext, extensionCount, extensions);
     tknPickPhysicalDevice(pTknGfxContext);
