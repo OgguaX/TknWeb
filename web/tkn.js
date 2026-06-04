@@ -418,6 +418,115 @@ export function tknUpdateBuffer(device, queue, pBuffer, offset, size, pData) {
 }
 
 // ============================================================================
+// Binding Group 管理
+// ============================================================================
+
+/**
+ * @typedef {Object} TknBindingGroupLayout
+ * @property {GPUBindGroupLayout} gpuBindGroupLayout - WebGPU 绑定组布局
+ */
+
+/**
+ * @typedef {Object} TknBindingGroup
+ * @property {GPUBindGroup} gpuBindGroup - WebGPU 绑定组
+ * @property {TknBindingGroupLayout} pLayout - 布局引用
+ * @property {GPUDevice} device - 设备引用
+ */
+
+/**
+ * 创建 Binding Group
+ * 对应 C API: tknCreateBindingGroup
+ *
+ * @param {GPUDevice} device - WebGPU 设备
+ * @param {GPUBindGroupLayout} bindGroupLayout - WebGPU 绑定组布局
+ * @param {Array<GPUBindingResource>} resources - 绑定的资源数组
+ * @returns {TknBindingGroup} Binding Group 对象
+ */
+export function tknCreateBindingGroup(device, bindGroupLayout, resources = []) {
+  if (!device) throw new Error("Device cannot be null");
+  if (!bindGroupLayout) throw new Error("Bind group layout cannot be null");
+
+  // 为每个资源创建绑定条目
+  const entries = resources
+    .map((resource, index) => ({
+      binding: index,
+      resource: resource,
+    }))
+    .filter((entry) => entry.resource !== null && entry.resource !== undefined);
+
+  // 创建 WebGPU 绑定组
+  const gpuBindGroup = device.createBindGroup({
+    layout: bindGroupLayout,
+    entries: entries,
+    label: `TknBindingGroup_${entries.length}`,
+  });
+
+  return {
+    gpuBindGroup,
+    pLayout: { gpuBindGroupLayout: bindGroupLayout },
+    device,
+  };
+}
+
+/**
+ * 销毁 Binding Group
+ * 对应 C API: tknDestroyBindingGroup
+ *
+ * @param {TknBindingGroup|null} pBindingGroup - Binding Group 对象（可以为 null）
+ */
+export function tknDestroyBindingGroup(pBindingGroup) {
+  if (!pBindingGroup) {
+    console.warn("tknDestroyBindingGroup: Binding Group is null");
+    return;
+  }
+
+  // WebGPU 的绑定组会自动垃圾回收，无需显式销毁
+  // 这里只是清理引用
+  pBindingGroup.gpuBindGroup = null;
+  pBindingGroup.device = null;
+}
+
+/**
+ * 更新 Binding Group 中的资源
+ * 对应 C API: tknUpdateBindingGroup
+ * 通过重新创建 bind group 来更新资源
+ *
+ * @param {GPUDevice} device - WebGPU 设备
+ * @param {TknBindingGroup} pBindingGroup - Binding Group 对象
+ * @param {Array<number>} indices - 要更新的 binding 位置数组
+ * @param {Array<GPUBindingResource>} resources - 对应的资源数组
+ */
+export function tknUpdateBindingGroup(device, pBindingGroup, indices = [], resources = []) {
+  if (!device) throw new Error("Device cannot be null");
+  if (!pBindingGroup) throw new Error("Binding Group cannot be null");
+  if (!pBindingGroup.pLayout || !pBindingGroup.pLayout.gpuBindGroupLayout) {
+    throw new Error("Binding Group layout is invalid");
+  }
+
+  if (indices.length !== resources.length) {
+    throw new Error("indices and resources arrays must have the same length");
+  }
+
+  // 为指定位置的资源创建绑定条目
+  const entries = indices
+    .map((binding, i) => ({
+      binding: binding,
+      resource: resources[i],
+    }))
+    .filter((entry) => entry.resource !== null && entry.resource !== undefined);
+
+  // 销毁旧的绑定组（WebGPU 会自动处理）
+  pBindingGroup.gpuBindGroup = null;
+
+  // 创建新的绑定组
+  pBindingGroup.gpuBindGroup = device.createBindGroup({
+    layout: pBindingGroup.pLayout.gpuBindGroupLayout,
+    entries: entries,
+    label: `TknBindingGroup_updated_${entries.length}`,
+  });
+}
+
+// ============================================================================
 // 绘制命令
 // ============================================================================
 
@@ -518,13 +627,16 @@ export function tknDrawIndexed(
 }
 
 /**
- * 导出转换函数供 Lua 或其他客户端使用
+ * 导出转换函数和 Binding Group 函数供 Lua 或其他客户端使用
  */
 export {
   convertVulkanBufferUsageToWebGPU,
   convertVulkanIndexTypeToWebGPU,
   VK_BUFFER_USAGE_FLAGS,
   VK_INDEX_TYPE_MAP,
+  tknCreateBindingGroup,
+  tknDestroyBindingGroup,
+  tknUpdateBindingGroup,
 };
 
 // ============================================================================

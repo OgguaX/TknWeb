@@ -42,7 +42,7 @@ void *tknCreateBindingGroupLayout(void *pTknGfxContext, uint32_t shaderPathCount
     // Merged binding table indexed by binding
     uint32_t bindingCount = maxBinding + 1;
     VkDescriptorType *vkDescriptorTypes = (VkDescriptorType *)tknMalloc(sizeof(VkDescriptorType) * bindingCount);
-    uint32_t *descriptorCounts = (uint32_t *)tknMalloc(sizeof(uint32_t) * bindingCount);
+    uint32_t *vkDescriptorCounts = (uint32_t *)tknMalloc(sizeof(uint32_t) * bindingCount);
     VkShaderStageFlags *vkShaderStageFlags = (VkShaderStageFlags *)tknMalloc(sizeof(VkShaderStageFlags) * bindingCount);
     bool *bindingUsed = (bool *)tknMalloc(sizeof(bool) * bindingCount);
     for (uint32_t i = 0; i < bindingCount; i++)
@@ -76,7 +76,7 @@ void *tknCreateBindingGroupLayout(void *pTknGfxContext, uint32_t shaderPathCount
                 if (!bindingUsed[binding])
                 {
                     vkDescriptorTypes[binding] = (VkDescriptorType)pBinding->descriptor_type;
-                    descriptorCounts[binding] = pBinding->count > 0 ? pBinding->count : 1;
+                    vkDescriptorCounts[binding] = pBinding->count > 0 ? pBinding->count : 1;
                     bindingUsed[binding] = true;
                 }
                 vkShaderStageFlags[binding] |= stageFlag;
@@ -107,7 +107,7 @@ void *tknCreateBindingGroupLayout(void *pTknGfxContext, uint32_t shaderPathCount
         layoutBindings[idx++] = (VkDescriptorSetLayoutBinding){
             .binding = i,
             .descriptorType = vkDescriptorTypes[i],
-            .descriptorCount = descriptorCounts[i],
+            .descriptorCount = vkDescriptorCounts[i],
             .stageFlags = vkShaderStageFlags[i],
             .pImmutableSamplers = NULL,
         };
@@ -138,9 +138,9 @@ void *tknCreateBindingGroupLayout(void *pTknGfxContext, uint32_t shaderPathCount
         .bindingCount = bindingCount,
         .usedBindingCount = usedBindingCount,
         .vkDescriptorTypes = vkDescriptorTypes,
-        .descriptorCounts = descriptorCounts,
+        .vkDescriptorCounts = vkDescriptorCounts,
         .vkShaderStageFlags = vkShaderStageFlags,
-        .bindingUsed = bindingUsed,
+        .tknBindingUsed = bindingUsed,
         .shaderPathCount = shaderPathCount,
         .shaderPaths = cachedShaderPaths,
         .pSpvReflectShaderModules = modules,
@@ -159,9 +159,9 @@ void tknDestroyBindingGroupLayout(void *pTknGfxContext, void *pTknBindingGroupLa
         pLayout->vkDescriptorSetLayout = VK_NULL_HANDLE;
     }
     tknFree(pLayout->vkDescriptorTypes);
-    tknFree(pLayout->descriptorCounts);
+    tknFree(pLayout->vkDescriptorCounts);
     tknFree(pLayout->vkShaderStageFlags);
-    tknFree(pLayout->bindingUsed);
+    tknFree(pLayout->tknBindingUsed);
     
     // Destroy cached shader modules
     for (uint32_t s = 0; s < pLayout->shaderPathCount; s++)
@@ -182,9 +182,9 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
     uint32_t bindingCount = pLayout->bindingCount;
     uint32_t usedBindingCount = pLayout->usedBindingCount;
     VkDescriptorType *vkDescriptorTypes = pLayout->vkDescriptorTypes;
-    uint32_t *descriptorCounts = pLayout->descriptorCounts;
+    uint32_t *vkDescriptorCounts = pLayout->vkDescriptorCounts;
     VkShaderStageFlags *vkShaderStageFlags = pLayout->vkShaderStageFlags;
-    bool *bindingUsed = pLayout->bindingUsed;
+    bool *bindingUsed = pLayout->tknBindingUsed;
     VkDescriptorSetLayout vkDescriptorSetLayout = pLayout->vkDescriptorSetLayout;
 
     // Build pool sizes (deduplicated by descriptor type) from merge table
@@ -202,7 +202,7 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
         {
             if (poolSizes[p].type == vkDescriptorTypes[i])
             {
-                poolSizes[p].descriptorCount += descriptorCounts[i];
+                poolSizes[p].descriptorCount += vkDescriptorCounts[i];
                 typeFound = true;
                 break;
             }
@@ -211,7 +211,7 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
         {
             poolSizes[poolSizeCount++] = (VkDescriptorPoolSize){
                 .type = vkDescriptorTypes[i],
-                .descriptorCount = descriptorCounts[i],
+                .descriptorCount = vkDescriptorCounts[i],
             };
         }
     }
@@ -341,4 +341,100 @@ void tknDestroyBindingGroup(void *pTknGfxContext, void *pTknBindingGroup)
     vkDestroyDescriptorPool(pGfxContext->vkDevice, pBindingGroup->vkDescriptorPool, NULL);
     // Note: Do NOT destroy vkDescriptorSetLayout here - it's owned by the layout
     tknFree(pBindingGroup);
+}
+
+void tknUpdateBindingGroup(void *pTknGfxContext, void *pTknBindingGroup, uint32_t resourceCount, uint32_t *indices, void **resourcePtrs)
+{
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    TknBindingGroup *pBindingGroup = (TknBindingGroup *)pTknBindingGroup;
+    TknBindingGroupLayout *pLayout = pBindingGroup->pLayout;
+
+    uint32_t bindingCount = pLayout->bindingCount;
+    VkDescriptorType *vkDescriptorTypes = pLayout->vkDescriptorTypes;
+    VkShaderStageFlags *vkShaderStageFlags = pLayout->vkShaderStageFlags;
+    bool *bindingUsed = pLayout->tknBindingUsed;
+    VkDescriptorSet vkDescriptorSet = pBindingGroup->vkDescriptorSet;
+
+    // Update provided binding resourcePtrs into the descriptor set in a single
+    // vkUpdateDescriptorSets call. resourcePtrs[i] is the resource to bind
+    // at descriptor binding indices[i]. Only image-view backed types are
+    // implemented; per-type info arrays are sized to resourceCount (transient).
+    if (resourceCount > 0)
+    {
+        VkWriteDescriptorSet *writes = (VkWriteDescriptorSet *)tknMalloc(sizeof(VkWriteDescriptorSet) * resourceCount);
+        VkDescriptorImageInfo *imgInfos = (VkDescriptorImageInfo *)tknMalloc(sizeof(VkDescriptorImageInfo) * resourceCount);
+        uint32_t writeCount = 0;
+
+        for (uint32_t i = 0; i < resourceCount; i++)
+        {
+            uint32_t binding = indices[i];
+            
+            if (binding >= bindingCount || !bindingUsed[binding] || resourcePtrs[i] == NULL)
+            {
+                continue;
+            }
+            VkDescriptorType type = vkDescriptorTypes[binding];
+            uint32_t w = writeCount;
+
+            writes[w] = (VkWriteDescriptorSet){
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = NULL,
+                .dstSet = vkDescriptorSet,
+                .dstBinding = binding,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = type,
+                .pImageInfo = NULL,
+                .pBufferInfo = NULL,
+                .pTexelBufferView = NULL,
+            };
+
+            switch (type)
+            {
+            case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+            case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+            {
+                TknImageView *pTknImageView = (TknImageView *)resourcePtrs[i];
+                imgInfos[w] = (VkDescriptorImageInfo){
+                    .sampler = VK_NULL_HANDLE,
+                    .imageView = pTknImageView->vkImageView,
+                    .imageLayout = (type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                                       ? VK_IMAGE_LAYOUT_GENERAL
+                                       : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                };
+                writes[w].pImageInfo = &imgInfos[w];
+                break;
+            }
+            case VK_DESCRIPTOR_TYPE_SAMPLER:
+            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                // TODO: image-class with sampler
+                tknAssert(false, "binding %u: descriptor type %d not implemented yet", binding, type);
+                break;
+            case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+            case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+            case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+            case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+                // TODO: buffer-class (allocate VkDescriptorBufferInfo array alongside imgInfos)
+                tknAssert(false, "binding %u: descriptor type %d not implemented yet", binding, type);
+                break;
+            case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+            case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+                // TODO: texel-buffer-class (allocate VkBufferView array alongside imgInfos)
+                tknAssert(false, "binding %u: descriptor type %d not implemented yet", binding, type);
+                break;
+            default:
+                tknAssert(false, "binding %u: unknown descriptor type %d", binding, type);
+                break;
+            }
+            writeCount++;
+        }
+
+        if (writeCount > 0)
+        {
+            vkUpdateDescriptorSets(pGfxContext->vkDevice, writeCount, writes, 0, NULL);
+        }
+        tknFree(writes);
+        tknFree(imgInfos);
+    }
 }

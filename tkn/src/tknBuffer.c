@@ -29,8 +29,8 @@ void *tknCreateBufferPtr(void *pTknGfxContext, uint64_t size, int usage, bool ma
     pBuffer->vkBuffer = vkBuffer;
     pBuffer->vkDeviceMemory = vkDeviceMemory;
     pBuffer->size = size;
-    pBuffer->usage = vkUsageFlags;
-    pBuffer->memoryPropertyFlags = memoryPropertyFlags;
+    pBuffer->vkBufferUsageFlags = vkUsageFlags;
+    pBuffer->vkMemoryPropertyFlags = memoryPropertyFlags;
     pBuffer->mappedAtCreation = mappedAtCreation;
     pBuffer->pMappedData = NULL;
 
@@ -170,7 +170,7 @@ void tknUpdateBuffer(void *pTknGfxContext, void *pTknBuffer, uint64_t offset, ui
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     TknBuffer *pBuffer = (TknBuffer *)pTknBuffer;
 
-    if (pBuffer->memoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+    if (pBuffer->vkMemoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
     {
         if (pBuffer->pMappedData != NULL)
         {

@@ -37,7 +37,7 @@ typedef struct TknImageView
 {
     TknImage *pTknImage;
     VkImageView vkImageView;
-    TknHashSet TknBindingGroupPtrHashSet;
+    TknHashSet tknBindingGroupPtrHashSet;
 } TknImageView;
 
 typedef struct TknBindingGroupLayout
@@ -45,9 +45,9 @@ typedef struct TknBindingGroupLayout
     uint32_t bindingCount;
     uint32_t usedBindingCount;
     VkDescriptorType *vkDescriptorTypes;
-    uint32_t *descriptorCounts;
+    uint32_t *vkDescriptorCounts;
     VkShaderStageFlags *vkShaderStageFlags;
-    bool *bindingUsed;
+    bool *tknBindingUsed;
 
     uint32_t shaderPathCount;
     const char **shaderPaths;
@@ -83,8 +83,8 @@ typedef struct TknBuffer
     VkBuffer vkBuffer;
     VkDeviceMemory vkDeviceMemory;
     uint64_t size;
-    VkBufferUsageFlags usage;
-    VkMemoryPropertyFlags memoryPropertyFlags;
+    VkBufferUsageFlags vkBufferUsageFlags;
+    VkMemoryPropertyFlags vkMemoryPropertyFlags;
     bool mappedAtCreation;
     void *pMappedData;
 } TknBuffer;
@@ -93,8 +93,8 @@ typedef struct TknGfxContext
 {
     VkInstance vkInstance;
     VkSurfaceKHR vkSurface;
-    VkSurfaceFormatKHR tknSurfaceFormat;
-    VkPresentModeKHR tknPresentMode;
+    VkSurfaceFormatKHR vkSurfaceFormat;
+    VkPresentModeKHR vkPresentMode;
     VkPhysicalDevice vkPhysicalDevice;
 
     uint32_t tknGfxQueueFamilyIndex;

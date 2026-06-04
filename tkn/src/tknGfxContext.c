@@ -146,8 +146,8 @@ static void tknPickPhysicalDevice(TknGfxContext *pTknGfxContext)
             for (supportedSurfaceFormatIndex = 0; supportedSurfaceFormatIndex < surfaceFormatCount; supportedSurfaceFormatIndex++)
             {
                 VkSurfaceFormatKHR vkSurfaceFormat = supportedSurfaceFormats[supportedSurfaceFormatIndex];
-                if (vkSurfaceFormat.colorSpace == pTknGfxContext->tknSurfaceFormat.colorSpace &&
-                    vkSurfaceFormat.format == pTknGfxContext->tknSurfaceFormat.format)
+                if (vkSurfaceFormat.colorSpace == pTknGfxContext->vkSurfaceFormat.colorSpace &&
+                    vkSurfaceFormat.format == pTknGfxContext->vkSurfaceFormat.format)
                 {
                     break;
                 }
@@ -172,7 +172,7 @@ static void tknPickPhysicalDevice(TknGfxContext *pTknGfxContext)
             for (supportedPresentModeIndex = 0; supportedPresentModeIndex < presentModeCount; supportedPresentModeIndex++)
             {
                 VkPresentModeKHR supportedPresentMode = supportedPresentModes[supportedPresentModeIndex];
-                if (supportedPresentMode == pTknGfxContext->tknPresentMode)
+                if (supportedPresentMode == pTknGfxContext->vkPresentMode)
                 {
                     break;
                 }
@@ -346,8 +346,8 @@ static void tknCreateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D targetS
             .flags = 0,
             .surface = vkSurface,
             .minImageCount = tknSwapchainImageCount,
-            .imageFormat = pTknGfxContext->tknSurfaceFormat.format,
-            .imageColorSpace = pTknGfxContext->tknSurfaceFormat.colorSpace,
+            .imageFormat = pTknGfxContext->vkSurfaceFormat.format,
+            .imageColorSpace = pTknGfxContext->vkSurfaceFormat.colorSpace,
             .imageExtent = tknSwapchainExtent,
             .imageArrayLayers = 1,
             .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -356,7 +356,7 @@ static void tknCreateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D targetS
             .pQueueFamilyIndices = pQueueFamilyIndices,
             .preTransform = pTknGfxContext->vkSurfaceCapabilities.currentTransform,
             .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            .presentMode = pTknGfxContext->tknPresentMode,
+            .presentMode = pTknGfxContext->vkPresentMode,
             .clipped = VK_TRUE,
             .oldSwapchain = VK_NULL_HANDLE,
         };
@@ -371,7 +371,7 @@ static void tknCreateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D targetS
     {
         TknImage *pTknImage = (TknImage *)tknMalloc(sizeof(TknImage));
         pTknImage->vkImage = tknSwapchainImages[i];
-        pTknImage->vkFormat = pTknGfxContext->tknSurfaceFormat.format;
+        pTknImage->vkFormat = pTknGfxContext->vkSurfaceFormat.format;
         pTknImage->vkDeviceMemory = VK_NULL_HANDLE;
         pTknImage->tknImageViewPtrHashSet = tknCreateHashSet(sizeof(void *));
         pTknGfxContext->tknSwapchainImagePtrs[i] = pTknImage;
@@ -384,7 +384,7 @@ static void tknCreateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D targetS
             0,
             1,
             VK_IMAGE_VIEW_TYPE_2D,
-            pTknGfxContext->tknSurfaceFormat.format,
+            pTknGfxContext->vkSurfaceFormat.format,
             pTknImage);
         pTknGfxContext->tknSwapchainImageViewPtrs[i] = pTknImageView;
     }
@@ -446,8 +446,8 @@ static void tknUpdateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D tknSwap
             .flags = 0,
             .surface = vkSurface,
             .minImageCount = pTknGfxContext->swapchainImageCount,
-            .imageFormat = pTknGfxContext->tknSurfaceFormat.format,
-            .imageColorSpace = pTknGfxContext->tknSurfaceFormat.colorSpace,
+            .imageFormat = pTknGfxContext->vkSurfaceFormat.format,
+            .imageColorSpace = pTknGfxContext->vkSurfaceFormat.colorSpace,
             .imageExtent = tknSwapchainExtent,
             .imageArrayLayers = 1,
             .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -456,7 +456,7 @@ static void tknUpdateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D tknSwap
             .pQueueFamilyIndices = pQueueFamilyIndices,
             .preTransform = pTknGfxContext->vkSurfaceCapabilities.currentTransform,
             .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            .presentMode = pTknGfxContext->tknPresentMode,
+            .presentMode = pTknGfxContext->vkPresentMode,
             .clipped = VK_TRUE,
             .oldSwapchain = VK_NULL_HANDLE,
         };
@@ -493,7 +493,7 @@ static void tknUpdateSwapchain(TknGfxContext *pTknGfxContext, VkExtent2D tknSwap
             .flags = 0,
             .image = tknSwapchainImages[i],
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = pTknGfxContext->tknSurfaceFormat.format,
+            .format = pTknGfxContext->vkSurfaceFormat.format,
             .components = components,
             .subresourceRange = subresourceRange,
         };
@@ -578,11 +578,11 @@ void *tknCreateGfxContextPtr(uint32_t extensionCount, const char **extensions, v
     *pTknGfxContext = (TknGfxContext){
         .vkInstance = VK_NULL_HANDLE,
         .vkSurface = VK_NULL_HANDLE,
-        .tknSurfaceFormat = {
+        .vkSurfaceFormat = {
             .format = VK_FORMAT_B8G8R8A8_UNORM,
             .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
         },
-        .tknPresentMode = VK_PRESENT_MODE_FIFO_KHR,
+        .vkPresentMode = VK_PRESENT_MODE_FIFO_KHR,
         .vkPhysicalDevice = VK_NULL_HANDLE,
 
         .tknGfxQueueFamilyIndex = 0,

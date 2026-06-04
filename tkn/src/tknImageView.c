@@ -35,7 +35,7 @@ void *tknCreateImageView(void *pTknGfxContext, uint32_t baseLayer, uint32_t laye
     TknImageView *pTknImageView = (TknImageView *)tknMalloc(sizeof(TknImageView));
     tknAssertVkResult(vkCreateImageView(pGfxContext->vkDevice, &imageViewCreateInfo, NULL, &pTknImageView->vkImageView));
     pTknImageView->pTknImage = pImage;
-    pTknImageView->TknBindingGroupPtrHashSet = tknCreateHashSet(sizeof(void *));
+    pTknImageView->tknBindingGroupPtrHashSet = tknCreateHashSet(sizeof(void *));
 
     // Add image view pointer to the parent image's hash set
     void *pImageViewPtr = pTknImageView;
@@ -53,7 +53,7 @@ void tknDestroyImageView(void *pTknGfxContext, void *pTknImageView)
     void *pImageViewPtr = pImageView;
     tknRemoveFromHashSet(&pImageView->pTknImage->tknImageViewPtrHashSet, &pImageViewPtr);
 
-    tknDestroyHashSet(pImageView->TknBindingGroupPtrHashSet);
+    tknDestroyHashSet(pImageView->tknBindingGroupPtrHashSet);
     vkDestroyImageView(pGfxContext->vkDevice, pImageView->vkImageView, NULL);
     pImageView->vkImageView = VK_NULL_HANDLE;
     pImageView->pTknImage = NULL;
