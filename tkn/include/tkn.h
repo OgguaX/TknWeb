@@ -21,7 +21,6 @@ extern void tknDestroyBindingGroup(void *pTknGfxContext, void *pTknBindingGroup)
 extern void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, const int *pColorAttachmentFormats, int depthAttachmentFormat, void *pTknRenderPassBindingGroupLayout, uint32_t spvPathCount, const char **spvPaths, void *pTknMeshVertexInputLayout, void *pTknInstanceVertexInputLayout, void *pVkPipelineInputAssemblyStateCreateInfo, void *pVkPipelineViewportStateCreateInfo, void *pVkPipelineRasterizationStateCreateInfo, void *pVkPipelineMultisampleStateCreateInfo, void *pVkPipelineDepthStencilStateCreateInfo, void *pVkPipelineColorBlendStateCreateInfo, void *pVkPipelineDynamicStateCreateInfo);
 extern void tknDestroyPipelinePtr(void *pTknGfxContext, void *pTknPipeline);
 
-
 extern void tknBeginCommandBuffer(void *pTknGfxContext);
 extern void tknEndCommandBuffer(void *pTknGfxContext);
 
@@ -32,5 +31,10 @@ extern void tknSetPipelinePtr(void *pTknGfxContext, void *pTknPipeline, void *pT
 
 extern void *tknCreateBufferPtr(void *pTknGfxContext, uint64_t size, int usage, bool mappedAtCreation, const void *pData);
 extern void tknDestroyBufferPtr(void *pTknGfxContext, void *pTknBuffer);
-extern void tknBindVertexBuffer(void *pTknGfxContext, void *pTknBuffer, uint32_t binding, uint64_t offset);
-extern void tknSetIndexBuffer(void *pTknGfxContext, void *pTknBuffer, int indexType, uint64_t offset);
+extern void tknBindVertexBuffer(void *pTknGfxContext, void *pTknBuffer, uint64_t offset);
+extern void tknBindInstanceBuffer(void *pTknGfxContext, void *pTknBuffer, uint64_t offset);
+extern void tknBindIndexBuffer(void *pTknGfxContext, void *pTknBuffer, int indexType, uint64_t offset);
+extern void tknUpdateBuffer(void *pTknGfxContext, void *pTknBuffer, uint64_t offset, uint64_t size, const void *pData);
+
+extern void tknDraw(void *pTknGfxContext, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
+extern void tknDrawIndexed(void *pTknGfxContext, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance);

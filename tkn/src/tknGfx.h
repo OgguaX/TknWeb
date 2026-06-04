@@ -84,6 +84,7 @@ typedef struct TknBuffer
     VkDeviceMemory vkDeviceMemory;
     uint64_t size;
     VkBufferUsageFlags usage;
+    VkMemoryPropertyFlags memoryPropertyFlags;
     bool mappedAtCreation;
     void *pMappedData;
 } TknBuffer;

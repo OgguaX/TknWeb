@@ -1,6 +1,5 @@
 #include "tkn.h"
 #include "tknGfx.h"
-#include "tknCore.h"
 
 void *tknCreateBufferPtr(void *pTknGfxContext, uint64_t size, int usage, bool mappedAtCreation, const void *pData)
 {
@@ -31,6 +30,7 @@ void *tknCreateBufferPtr(void *pTknGfxContext, uint64_t size, int usage, bool ma
     pBuffer->vkDeviceMemory = vkDeviceMemory;
     pBuffer->size = size;
     pBuffer->usage = vkUsageFlags;
+    pBuffer->memoryPropertyFlags = memoryPropertyFlags;
     pBuffer->mappedAtCreation = mappedAtCreation;
     pBuffer->pMappedData = NULL;
 
@@ -111,33 +111,100 @@ void tknDestroyBufferPtr(void *pTknGfxContext, void *pTknBuffer)
     tknFree(pBuffer);
 }
 
-void tknBindVertexBuffer(void *pTknGfxContext, void *pTknBuffer, uint32_t binding, uint64_t offset)
+void tknBindVertexBuffer(void *pTknGfxContext, void *pTknBuffer, uint64_t offset)
 {
     tknAssert(pTknGfxContext != NULL, "Graphics context cannot be NULL");
     tknAssert(pTknBuffer != NULL, "Buffer cannot be NULL");
-    
+
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     TknBuffer *pBuffer = (TknBuffer *)pTknBuffer;
-    
+
     uint32_t frameIndex = pGfxContext->frameCount % pGfxContext->swapchainImageCount;
     VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[frameIndex];
-    
+
     VkBuffer vertexBuffers[] = {pBuffer->vkBuffer};
     VkDeviceSize offsets[] = {(VkDeviceSize)offset};
-    
-    vkCmdBindVertexBuffers(vkCommandBuffer, binding, 1, vertexBuffers, offsets);
+
+    vkCmdBindVertexBuffers(vkCommandBuffer, TKN_VERTEX_BINDING_DESCRIPTION, 1, vertexBuffers, offsets);
 }
 
-void tknSetIndexBuffer(void *pTknGfxContext, void *pTknBuffer, int indexType, uint64_t offset)
+void tknBindInstanceBuffer(void *pTknGfxContext, void *pTknBuffer, uint64_t offset)
 {
     tknAssert(pTknGfxContext != NULL, "Graphics context cannot be NULL");
     tknAssert(pTknBuffer != NULL, "Buffer cannot be NULL");
-    
+
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     TknBuffer *pBuffer = (TknBuffer *)pTknBuffer;
-    
+
     uint32_t frameIndex = pGfxContext->frameCount % pGfxContext->swapchainImageCount;
     VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[frameIndex];
-    
+
+    VkBuffer instanceBuffers[] = {pBuffer->vkBuffer};
+    VkDeviceSize offsets[] = {(VkDeviceSize)offset};
+
+    vkCmdBindVertexBuffers(vkCommandBuffer, TKN_INSTANCE_BINDING_DESCRIPTION, 1, instanceBuffers, offsets);
+}
+
+void tknBindIndexBuffer(void *pTknGfxContext, void *pTknBuffer, int indexType, uint64_t offset)
+{
+    tknAssert(pTknGfxContext != NULL, "Graphics context cannot be NULL");
+    tknAssert(pTknBuffer != NULL, "Buffer cannot be NULL");
+
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    TknBuffer *pBuffer = (TknBuffer *)pTknBuffer;
+
+    uint32_t frameIndex = pGfxContext->frameCount % pGfxContext->swapchainImageCount;
+    VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[frameIndex];
+
     vkCmdBindIndexBuffer(vkCommandBuffer, pBuffer->vkBuffer, (VkDeviceSize)offset, (VkIndexType)indexType);
+}
+
+void tknUpdateBuffer(void *pTknGfxContext, void *pTknBuffer, uint64_t offset, uint64_t size, const void *pData)
+{
+    tknAssert(pTknGfxContext != NULL, "Graphics context cannot be NULL");
+    tknAssert(pTknBuffer != NULL, "Buffer cannot be NULL");
+    tknAssert(pData != NULL, "Data cannot be NULL");
+    tknAssert(size > 0, "Buffer update size must be greater than 0");
+    tknAssert(offset + size <= ((TknBuffer *)pTknBuffer)->size, "Buffer update out of bounds");
+
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    TknBuffer *pBuffer = (TknBuffer *)pTknBuffer;
+
+    if (pBuffer->memoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+    {
+        if (pBuffer->pMappedData != NULL)
+        {
+            memcpy((uint8_t *)pBuffer->pMappedData + offset, pData, size);
+        }
+        else
+        {
+            void *pMappedData = NULL;
+            VkResult result = vkMapMemory(pGfxContext->vkDevice, pBuffer->vkDeviceMemory, (VkDeviceSize)offset, (VkDeviceSize)size, 0, &pMappedData);
+            tknAssertVkResult(result);
+            memcpy(pMappedData, pData, size);
+            vkUnmapMemory(pGfxContext->vkDevice, pBuffer->vkDeviceMemory);
+        }
+    }
+    else
+    {
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingMemory;
+        VkMemoryPropertyFlags stagingMemFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        tknCreateVkBuffer(pGfxContext, (VkDeviceSize)size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingMemFlags, &stagingBuffer, &stagingMemory);
+
+        void *pStagingData = NULL;
+        VkResult result = vkMapMemory(pGfxContext->vkDevice, stagingMemory, 0, (VkDeviceSize)size, 0, &pStagingData);
+        tknAssertVkResult(result);
+        memcpy(pStagingData, pData, size);
+        vkUnmapMemory(pGfxContext->vkDevice, stagingMemory);
+
+        uint32_t frameIndex = pGfxContext->frameCount % pGfxContext->swapchainImageCount;
+        VkCommandBuffer cmdBuffer = pGfxContext->vkGfxCommandBuffers[frameIndex];
+        VkBufferCopy copyRegion = {.srcOffset = 0, .dstOffset = (VkDeviceSize)offset, .size = (VkDeviceSize)size};
+        vkCmdCopyBuffer(cmdBuffer, stagingBuffer, pBuffer->vkBuffer, 1, &copyRegion);
+
+        vkDestroyBuffer(pGfxContext->vkDevice, stagingBuffer, NULL);
+        vkFreeMemory(pGfxContext->vkDevice, stagingMemory, NULL);
+    }
 }
