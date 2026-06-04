@@ -223,3 +223,25 @@ void tknSetPipelinePtr(void *pTknGfxContext, void *pTknPipeline, void *pTknRende
     vkCmdBindDescriptorSets(vkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pPipeline->vkPipelineLayout, 0, TKN_MAX_DESCRIPTOR_SET, vkDescriptorSets, 0, NULL);
     vkCmdBindPipeline(vkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pPipeline->vkPipeline);
 }
+
+void tknSetBindingGroupPtr(void *pTknGfxContext, void *pTknPipeline, void *pTknRenderPassBindingGroup, void *pTknPipelineBindingGroup)
+{
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    TknPipeline *pPipeline = (TknPipeline *)pTknPipeline;
+    TknBindingGroup *pRenderPassBindingGroup = (TknBindingGroup *)pTknRenderPassBindingGroup;
+    TknBindingGroup *pPipelineBindingGroup = (TknBindingGroup *)pTknPipelineBindingGroup;
+
+    uint32_t frameIndex = pGfxContext->frameCount % pGfxContext->swapchainImageCount;
+    VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[frameIndex];
+
+    VkDescriptorSet vkDescriptorSets[TKN_MAX_DESCRIPTOR_SET] = {
+        pGfxContext->pTknGlobalBindingGroup->vkDescriptorSet,
+        pRenderPassBindingGroup != NULL ? pRenderPassBindingGroup->vkDescriptorSet : VK_NULL_HANDLE,
+        pPipelineBindingGroup != NULL ? pPipelineBindingGroup->vkDescriptorSet : VK_NULL_HANDLE,
+    };
+
+    vkCmdBindDescriptorSets(vkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pPipeline->vkPipelineLayout, 0, TKN_MAX_DESCRIPTOR_SET, vkDescriptorSets, 0, NULL);
+    vkCmdBindPipeline(vkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pPipeline->vkPipeline);
+}
+
+

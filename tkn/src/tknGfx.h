@@ -52,7 +52,7 @@ typedef struct TknBindingGroupLayout
     uint32_t shaderPathCount;
     const char **shaderPaths;
     SpvReflectShaderModule *pSpvReflectShaderModules;
-    
+
     VkDescriptorSetLayout vkDescriptorSetLayout;
 } TknBindingGroupLayout;
 
@@ -77,6 +77,16 @@ typedef struct TknPipeline
     TknBindingGroupLayout *pTknPipelineBindingGroupLayout;
     TknVertexInputLayout tknVertexInputLayouts[TKN_MAX_VERTEX_BINDING_DESCRIPTION];
 } TknPipeline;
+
+typedef struct TknBuffer
+{
+    VkBuffer vkBuffer;
+    VkDeviceMemory vkDeviceMemory;
+    uint64_t size;
+    VkBufferUsageFlags usage;
+    bool mappedAtCreation;
+    void *pMappedData;
+} TknBuffer;
 
 typedef struct TknGfxContext
 {

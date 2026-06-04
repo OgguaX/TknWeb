@@ -7,6 +7,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <string.h>
 #include "tkn.h"
 
 #define TKN_CLAMP(x, min, max) \
