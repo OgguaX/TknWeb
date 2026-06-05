@@ -1,6 +1,6 @@
 /**
  * Tickernel WebGPU JavaScript Wrapper
- * 实现与 tkn.h 一致的 Buffer 和 Draw 命令 API
+ * 实现与 tknGfx.h 一致的 Buffer 和 Draw 命令 API
  * 支持 Vulkan 数值/枚举自动转换到 WebGPU
  *
  * ============================================================================

@@ -4,18 +4,19 @@ project(TickernelEngine LANGUAGES C)
 # Dependencies
 find_package(Vulkan REQUIRED)
 
-# Add subdirectories
-# add_subdirectory(freetype)
+# Add subdirectories in dependency order
+add_subdirectory(freetype)
 add_subdirectory(cglm)
 set(SPIRV_REFLECT_STATIC_LIB ON CACHE BOOL "Build SPIRV-Reflect static library" FORCE)
 set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "Build spirv-reflect executable" FORCE)
 add_subdirectory(spirv_reflect)
+add_subdirectory(tknGfx)
+add_subdirectory(lua)
 add_subdirectory(tkn)
-# add_subdirectory(lua)
 
 # Create an umbrella target that depends on all sub-projects
 add_custom_target(${PROJECT_NAME} ALL)
-# add_dependencies(${PROJECT_NAME} Tickernel TickernelLua)
+add_dependencies(${PROJECT_NAME} TickernelGfx Lua Tickernel)
 
 ## Compile shaders
 message(CMAKE_BINARY_DIR "${CMAKE_BINARY_DIR}")
