@@ -17,12 +17,29 @@ typedef enum
     TKN_MAX_VERTEX_BINDING_DESCRIPTION = 2,
 } TknVertexBinding;
 
+typedef struct TknBuffer
+{
+    VkBuffer vkBuffer;
+    VkDeviceMemory vkDeviceMemory;
+    uint64_t size;
+    VkBufferUsageFlags vkBufferUsageFlags;
+    VkMemoryPropertyFlags vkMemoryPropertyFlags;
+    bool mappedAtCreation;
+    void *pMappedData;
+} TknBuffer;
+
 typedef struct TknUniformBuffer
 {
+    TknBuffer *pTknBuffer;
+    VkDeviceSize offset;
+    VkDeviceSize range;
+    TknHashSet tknBindingGroupPtrHashSet;
 } TknUniformBuffer;
 
 typedef struct TknSampler
 {
+    VkSampler vkSampler;
+    TknHashSet tknBindingGroupPtrHashSet;
 } TknSampler;
 
 typedef struct TknImage
@@ -61,6 +78,8 @@ typedef struct TknBindingGroup
     TknBindingGroupLayout *pLayout;
     VkDescriptorPool vkDescriptorPool;
     VkDescriptorSet vkDescriptorSet;
+    uint32_t tknBindingResourceCount;
+    void **tknBindingResourcePtrs;
 } TknBindingGroup;
 
 typedef struct TknVertexInputLayout
@@ -77,17 +96,6 @@ typedef struct TknPipeline
     TknBindingGroupLayout *pTknPipelineBindingGroupLayout;
     TknVertexInputLayout tknVertexInputLayouts[TKN_MAX_VERTEX_BINDING_DESCRIPTION];
 } TknPipeline;
-
-typedef struct TknBuffer
-{
-    VkBuffer vkBuffer;
-    VkDeviceMemory vkDeviceMemory;
-    uint64_t size;
-    VkBufferUsageFlags vkBufferUsageFlags;
-    VkMemoryPropertyFlags vkMemoryPropertyFlags;
-    bool mappedAtCreation;
-    void *pMappedData;
-} TknBuffer;
 
 typedef struct TknGfxContext
 {
@@ -131,6 +139,15 @@ void tknEndSingleTimeCommands(TknGfxContext *pTknGfxContext, VkCommandBuffer vkC
 
 SpvReflectShaderModule tknCreateSpvReflectShaderModule(const char *filePath);
 void tknDestroySpvReflectShaderModule(SpvReflectShaderModule *pSpvReflectShaderModule);
+
+void *tknCreateUniformBuffer(void *pTknBuffer, uint64_t offset, uint64_t range);
+void tknDestroyUniformBuffer(void *pTknUniformBuffer);
+
+void *tknCreateSampler(void *pTknGfxContext, int magFilter, int minFilter, int mipmapMode,
+                       int addressModeU, int addressModeV, int addressModeW, float mipLodBias,
+                       bool anisotropyEnable, float maxAnisotropy, bool compareEnable, int compareOp,
+                       float minLod, float maxLod, int borderColor, bool unnormalizedCoordinates);
+void tknDestroySampler(void *pTknGfxContext, void *pTknSampler);
 
 void *tknCreateBindingGroupLayout(void *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths, uint32_t set);
 void tknDestroyBindingGroupLayout(void *pTknGfxContext, void *pTknBindingGroupLayout);

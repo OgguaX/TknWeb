@@ -12,6 +12,12 @@ extern void tknDestroyImagePtr(void *pTknGfxContext, void *pTknImage);
 extern void *tknCreateImageView(void *pTknGfxContext, uint32_t baseLayer, uint32_t layerCount, int aspectFlags, uint32_t baseMipLevel, uint32_t mipLevelCount, int dimension, int format, void *pTknImage);
 extern void tknDestroyImageView(void *pTknGfxContext, void *pTknImageView);
 
+extern void *tknCreateUniformBuffer(void *pTknBuffer, uint64_t offset, uint64_t range);
+extern void tknDestroyUniformBuffer(void *pTknUniformBuffer);
+
+extern void *tknCreateSampler(void *pTknGfxContext, int magFilter, int minFilter, int mipmapMode, int addressModeU, int addressModeV, int addressModeW, float mipLodBias, bool anisotropyEnable, float maxAnisotropy, bool compareEnable, int compareOp, float minLod, float maxLod, int borderColor, bool unnormalizedCoordinates);
+extern void tknDestroySampler(void *pTknGfxContext, void *pTknSampler);
+
 extern void *tknCreateBindingGroupLayout(void *pTknGfxContext, uint32_t shaderPathCount, const char **shaderPaths, uint32_t set);
 extern void tknDestroyBindingGroupLayout(void *pTknGfxContext, void *pTknBindingGroupLayout);
 

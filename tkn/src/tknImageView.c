@@ -48,6 +48,7 @@ void tknDestroyImageView(void *pTknGfxContext, void *pTknImageView)
 {
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     TknImageView *pImageView = (TknImageView *)pTknImageView;
+    tknAssert(pImageView->tknBindingGroupPtrHashSet.count == 0, "Cannot destroy image view while it is still referenced by binding groups");
 
     // Remove from parent image's hash set
     void *pImageViewPtr = pImageView;

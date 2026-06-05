@@ -239,14 +239,21 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
     VkDescriptorSet vkDescriptorSet;
     tknAssertVkResult(vkAllocateDescriptorSets(pGfxContext->vkDevice, &allocInfo, &vkDescriptorSet));
 
+    TknBindingGroup *pBindingGroup = (TknBindingGroup *)tknMalloc(sizeof(TknBindingGroup));
+    void **tknBindingResourcePtrs = (void **)tknMalloc(sizeof(void *) * bindingCount);
+    for (uint32_t i = 0; i < bindingCount; i++)
+    {
+        tknBindingResourcePtrs[i] = NULL;
+    }
+
     // Write provided binding resourcePtrs into the descriptor set in a single
     // vkUpdateDescriptorSets call. resourcePtrs[binding] is the resource bound
-    // at descriptor binding `binding`. Only image-view backed types are
-    // implemented; per-type info arrays are sized to resourceCount (transient).
+    // at descriptor binding `binding`.
     if (resourceCount > 0)
     {
         VkWriteDescriptorSet *writes = (VkWriteDescriptorSet *)tknMalloc(sizeof(VkWriteDescriptorSet) * resourceCount);
         VkDescriptorImageInfo *imgInfos = (VkDescriptorImageInfo *)tknMalloc(sizeof(VkDescriptorImageInfo) * resourceCount);
+        VkDescriptorBufferInfo *bufferInfos = (VkDescriptorBufferInfo *)tknMalloc(sizeof(VkDescriptorBufferInfo) * resourceCount);
         uint32_t writeCount = 0;
 
         for (uint32_t binding = 0; binding < resourceCount; binding++)
@@ -286,20 +293,45 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
                                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 };
                 writes[w].pImageInfo = &imgInfos[w];
+                tknBindingResourcePtrs[binding] = resourcePtrs[binding];
+                void *pBindingGroupPtr = pBindingGroup;
+                tknAddToHashSet(&pTknImageView->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
                 break;
             }
             case VK_DESCRIPTOR_TYPE_SAMPLER:
+            {
+                TknSampler *pTknSampler = (TknSampler *)resourcePtrs[binding];
+                imgInfos[w] = (VkDescriptorImageInfo){
+                    .sampler = pTknSampler->vkSampler,
+                    .imageView = VK_NULL_HANDLE,
+                    .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                };
+                writes[w].pImageInfo = &imgInfos[w];
+                tknBindingResourcePtrs[binding] = resourcePtrs[binding];
+                void *pBindingGroupPtr = pBindingGroup;
+                tknAddToHashSet(&pTknSampler->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+                break;
+            }
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-                // TODO: image-class with sampler
                 tknAssert(false, "binding %u: descriptor type %d not implemented yet", binding, type);
                 break;
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
             case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
             case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-                // TODO: buffer-class (allocate VkDescriptorBufferInfo array alongside imgInfos)
-                tknAssert(false, "binding %u: descriptor type %d not implemented yet", binding, type);
+            {
+                TknUniformBuffer *pTknUniformBuffer = (TknUniformBuffer *)resourcePtrs[binding];
+                bufferInfos[w] = (VkDescriptorBufferInfo){
+                    .buffer = pTknUniformBuffer->pTknBuffer->vkBuffer,
+                    .offset = pTknUniformBuffer->offset,
+                    .range = pTknUniformBuffer->range,
+                };
+                writes[w].pBufferInfo = &bufferInfos[w];
+                tknBindingResourcePtrs[binding] = resourcePtrs[binding];
+                void *pBindingGroupPtr = pBindingGroup;
+                tknAddToHashSet(&pTknUniformBuffer->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
                 break;
+            }
             case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
             case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
                 // TODO: texel-buffer-class (allocate VkBufferView array alongside imgInfos)
@@ -318,17 +350,19 @@ void *tknCreateBindingGroup(void *pTknGfxContext, void *pTknBindingGroupLayout, 
         }
         tknFree(writes);
         tknFree(imgInfos);
+        tknFree(bufferInfos);
     }
 
     // Cleanup temporaries
     tknFree(poolSizes);
 
     // Return opaque TknBindingGroup with reference to layout
-    TknBindingGroup *pBindingGroup = (TknBindingGroup *)tknMalloc(sizeof(TknBindingGroup));
     *pBindingGroup = (TknBindingGroup){
         .pLayout = pLayout,
         .vkDescriptorPool = vkDescriptorPool,
         .vkDescriptorSet = vkDescriptorSet,
+        .tknBindingResourceCount = bindingCount,
+        .tknBindingResourcePtrs = tknBindingResourcePtrs,
     };
     return pBindingGroup;
 }
@@ -337,9 +371,49 @@ void tknDestroyBindingGroup(void *pTknGfxContext, void *pTknBindingGroup)
 {
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
     TknBindingGroup *pBindingGroup = (TknBindingGroup *)pTknBindingGroup;
+    for (uint32_t binding = 0; binding < pBindingGroup->tknBindingResourceCount; binding++)
+    {
+        void *resourcePtr = pBindingGroup->tknBindingResourcePtrs[binding];
+        if (resourcePtr == NULL || !pBindingGroup->pLayout->tknBindingUsed[binding])
+        {
+            continue;
+        }
+
+        void *pBindingGroupPtr = pBindingGroup;
+        switch (pBindingGroup->pLayout->vkDescriptorTypes[binding])
+        {
+        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+        case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+        {
+            TknImageView *pImageView = (TknImageView *)resourcePtr;
+            tknRemoveFromHashSet(&pImageView->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+            break;
+        }
+        case VK_DESCRIPTOR_TYPE_SAMPLER:
+        case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+        {
+            TknSampler *pSampler = (TknSampler *)resourcePtr;
+            tknRemoveFromHashSet(&pSampler->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+            break;
+        }
+        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+        {
+            TknUniformBuffer *pUniformBuffer = (TknUniformBuffer *)resourcePtr;
+            tknRemoveFromHashSet(&pUniformBuffer->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+            break;
+        }
+        default:
+            break;
+        }
+    }
     // Destroying the pool implicitly frees the descriptor set
     vkDestroyDescriptorPool(pGfxContext->vkDevice, pBindingGroup->vkDescriptorPool, NULL);
     // Note: Do NOT destroy vkDescriptorSetLayout here - it's owned by the layout
+    tknFree(pBindingGroup->tknBindingResourcePtrs);
     tknFree(pBindingGroup);
 }
 
@@ -357,12 +431,12 @@ void tknUpdateBindingGroup(void *pTknGfxContext, void *pTknBindingGroup, uint32_
 
     // Update provided binding resourcePtrs into the descriptor set in a single
     // vkUpdateDescriptorSets call. resourcePtrs[i] is the resource to bind
-    // at descriptor binding indices[i]. Only image-view backed types are
-    // implemented; per-type info arrays are sized to resourceCount (transient).
+    // at descriptor binding indices[i].
     if (resourceCount > 0)
     {
         VkWriteDescriptorSet *writes = (VkWriteDescriptorSet *)tknMalloc(sizeof(VkWriteDescriptorSet) * resourceCount);
         VkDescriptorImageInfo *imgInfos = (VkDescriptorImageInfo *)tknMalloc(sizeof(VkDescriptorImageInfo) * resourceCount);
+        VkDescriptorBufferInfo *bufferInfos = (VkDescriptorBufferInfo *)tknMalloc(sizeof(VkDescriptorBufferInfo) * resourceCount);
         uint32_t writeCount = 0;
 
         for (uint32_t i = 0; i < resourceCount; i++)
@@ -374,6 +448,40 @@ void tknUpdateBindingGroup(void *pTknGfxContext, void *pTknBindingGroup, uint32_
                 continue;
             }
             VkDescriptorType type = vkDescriptorTypes[binding];
+            void *oldResourcePtr = pBindingGroup->tknBindingResourcePtrs[binding];
+            if (oldResourcePtr != NULL)
+            {
+                void *pBindingGroupPtr = pBindingGroup;
+                switch (vkDescriptorTypes[binding])
+                {
+                case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+                case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+                case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                {
+                    TknImageView *pImageView = (TknImageView *)oldResourcePtr;
+                    tknRemoveFromHashSet(&pImageView->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+                    break;
+                }
+                case VK_DESCRIPTOR_TYPE_SAMPLER:
+                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                {
+                    TknSampler *pSampler = (TknSampler *)oldResourcePtr;
+                    tknRemoveFromHashSet(&pSampler->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+                    break;
+                }
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+                {
+                    TknUniformBuffer *pUniformBuffer = (TknUniformBuffer *)oldResourcePtr;
+                    tknRemoveFromHashSet(&pUniformBuffer->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+                    break;
+                }
+                default:
+                    break;
+                }
+            }
             uint32_t w = writeCount;
 
             writes[w] = (VkWriteDescriptorSet){
@@ -404,20 +512,54 @@ void tknUpdateBindingGroup(void *pTknGfxContext, void *pTknBindingGroup, uint32_
                                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 };
                 writes[w].pImageInfo = &imgInfos[w];
+                pBindingGroup->tknBindingResourcePtrs[binding] = resourcePtrs[i];
+                {
+                    void *pBindingGroupPtr = pBindingGroup;
+                    TknImageView *pImageView = (TknImageView *)resourcePtrs[i];
+                    tknAddToHashSet(&pImageView->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+                }
                 break;
             }
             case VK_DESCRIPTOR_TYPE_SAMPLER:
+            {
+                TknSampler *pTknSampler = (TknSampler *)resourcePtrs[i];
+                imgInfos[w] = (VkDescriptorImageInfo){
+                    .sampler = pTknSampler->vkSampler,
+                    .imageView = VK_NULL_HANDLE,
+                    .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                };
+                writes[w].pImageInfo = &imgInfos[w];
+                pBindingGroup->tknBindingResourcePtrs[binding] = resourcePtrs[i];
+                {
+                    void *pBindingGroupPtr = pBindingGroup;
+                    TknSampler *pSampler = (TknSampler *)resourcePtrs[i];
+                    tknAddToHashSet(&pSampler->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+                }
+                break;
+            }
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-                // TODO: image-class with sampler
                 tknAssert(false, "binding %u: descriptor type %d not implemented yet", binding, type);
                 break;
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
             case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
             case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-                // TODO: buffer-class (allocate VkDescriptorBufferInfo array alongside imgInfos)
-                tknAssert(false, "binding %u: descriptor type %d not implemented yet", binding, type);
+            {
+                TknUniformBuffer *pTknUniformBuffer = (TknUniformBuffer *)resourcePtrs[i];
+                bufferInfos[w] = (VkDescriptorBufferInfo){
+                    .buffer = pTknUniformBuffer->pTknBuffer->vkBuffer,
+                    .offset = pTknUniformBuffer->offset,
+                    .range = pTknUniformBuffer->range,
+                };
+                writes[w].pBufferInfo = &bufferInfos[w];
+                pBindingGroup->tknBindingResourcePtrs[binding] = resourcePtrs[i];
+                {
+                    void *pBindingGroupPtr = pBindingGroup;
+                    TknUniformBuffer *pUniformBuffer = (TknUniformBuffer *)resourcePtrs[i];
+                    tknAddToHashSet(&pUniformBuffer->tknBindingGroupPtrHashSet, &pBindingGroupPtr);
+                }
                 break;
+            }
             case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
             case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
                 // TODO: texel-buffer-class (allocate VkBufferView array alongside imgInfos)
@@ -436,5 +578,7 @@ void tknUpdateBindingGroup(void *pTknGfxContext, void *pTknBindingGroup, uint32_
         }
         tknFree(writes);
         tknFree(imgInfos);
+        tknFree(bufferInfos);
     }
+
 }
