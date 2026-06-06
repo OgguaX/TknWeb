@@ -2,6 +2,7 @@
 // Provides Lua access to TickernelGfx graphics core functions
 
 #include "tkn.h"
+#include "tknFont.h"
 #include <stdio.h>
 
 // ============================================================================
@@ -609,6 +610,99 @@ static int luaDrawIndexed(lua_State *L)
 }
 
 // ============================================================================
+// Font Functions
+// ============================================================================
+
+static int luaCreateTknFontLibraryPtr(lua_State *L)
+{
+    TknFontLibrary *pTknFontLibrary = createTknFontLibraryPtr();
+    lua_pushlightuserdata(L, pTknFontLibrary);
+    return 1;
+}
+
+static int luaDestroyTknFontLibraryPtr(lua_State *L)
+{
+    void *pTknFontLibrary = lua_touserdata(L, 1);
+    void *pGfxContext = lua_touserdata(L, 2);
+    destroyTknFontLibraryPtr((TknFontLibrary *)pTknFontLibrary, pGfxContext);
+    return 0;
+}
+
+static int luaCreateTknFontPtr(lua_State *L)
+{
+    void *pTknFontLibrary = lua_touserdata(L, 1);
+    void *pGfxContext = lua_touserdata(L, 2);
+    uint32_t fontPathCount = (uint32_t)luaL_checkinteger(L, 3);
+    
+    // Extract font paths table
+    const char **fontPaths = NULL;
+    if (lua_istable(L, 4) && fontPathCount > 0)
+    {
+        fontPaths = tknMalloc(fontPathCount * sizeof(const char *));
+        for (uint32_t i = 0; i < fontPathCount; i++)
+        {
+            lua_geti(L, 4, i + 1);
+            fontPaths[i] = lua_tostring(L, -1);
+            lua_pop(L, 1);
+        }
+    }
+    
+    uint32_t fontSize = (uint32_t)luaL_checkinteger(L, 5);
+    uint32_t atlasLength = (uint32_t)luaL_checkinteger(L, 6);
+    
+    // Extract bold strengths table (optional)
+    FT_Pos *boldStrengths = NULL;
+    if (lua_istable(L, 7) && fontPathCount > 0)
+    {
+        boldStrengths = tknMalloc(fontPathCount * sizeof(FT_Pos));
+        for (uint32_t i = 0; i < fontPathCount; i++)
+        {
+            lua_geti(L, 7, i + 1);
+            boldStrengths[i] = (FT_Pos)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+        }
+    }
+    
+    void *pTknFont = createTknFontPtr((TknFontLibrary *)pTknFontLibrary, pGfxContext, fontPathCount, fontPaths, fontSize, atlasLength, boldStrengths);
+    
+    tknFree(fontPaths);
+    tknFree(boldStrengths);
+    
+    lua_pushlightuserdata(L, pTknFont);
+    return 1;
+}
+
+static int luaDestroyTknFontPtr(lua_State *L)
+{
+    void *pTknFontLibrary = lua_touserdata(L, 1);
+    void *pTknFont = lua_touserdata(L, 2);
+    void *pGfxContext = lua_touserdata(L, 3);
+    destroyTknFontPtr((TknFontLibrary *)pTknFontLibrary, (TknFont *)pTknFont, pGfxContext);
+    return 0;
+}
+
+static int luaLoadTknChar(lua_State *L)
+{
+    void *pTknFont = lua_touserdata(L, 1);
+    uint32_t unicode = (uint32_t)luaL_checkinteger(L, 2);
+    
+    bool hasLoaded = false;
+    void *pTknChar = loadTknChar((TknFont *)pTknFont, unicode, &hasLoaded);
+    
+    lua_pushlightuserdata(L, pTknChar);
+    lua_pushboolean(L, hasLoaded);
+    return 2;
+}
+
+static int luaFlushTknFontPtr(lua_State *L)
+{
+    void *pTknFont = lua_touserdata(L, 1);
+    void *pGfxContext = lua_touserdata(L, 2);
+    flushTknFontPtr((TknFont *)pTknFont, pGfxContext);
+    return 0;
+}
+
+// ============================================================================
 // Lua Binding Registration
 // ============================================================================
 
@@ -668,6 +762,14 @@ void bindTknGfxFunctions(lua_State *pLuaState)
         // Draw
         {"tknDraw", luaDraw},
         {"tknDrawIndexed", luaDrawIndexed},
+        
+        // Font
+        {"tknCreateTknFontLibraryPtr", luaCreateTknFontLibraryPtr},
+        {"tknDestroyTknFontLibraryPtr", luaDestroyTknFontLibraryPtr},
+        {"tknCreateTknFontPtr", luaCreateTknFontPtr},
+        {"tknDestroyTknFontPtr", luaDestroyTknFontPtr},
+        {"tknLoadTknChar", luaLoadTknChar},
+        {"tknFlushTknFontPtr", luaFlushTknFontPtr},
         
         {NULL, NULL},
     };

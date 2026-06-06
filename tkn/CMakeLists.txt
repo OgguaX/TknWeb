@@ -15,6 +15,7 @@ set(PUBLIC_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PUBLIC_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # Link against graphics and Lua libraries
-target_link_libraries(${PROJECT_NAME} PUBLIC TickernelGfx Lua)
+target_link_libraries(${PROJECT_NAME} PUBLIC TickernelGfx Lua freetype)
