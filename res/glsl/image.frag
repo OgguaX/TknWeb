@@ -1,0 +1,20 @@
+#version 450
+
+#include "tickernel.glsl"
+
+layout(location = 0) in vec2 uv;
+layout(location = 1) in vec4 color;
+layout(location = 2) in float alphaThreshold;
+
+layout(location = 0) out vec4 outColor;
+
+layout(set = PIPELINE_DESCRIPTOR_SET, binding = 0) uniform sampler2D imageTexture;
+
+void main() {
+    vec4 texColor = texture(imageTexture, uv);
+    if(texColor.a < alphaThreshold) {
+        discard;
+    }
+    outColor = texColor * color;
+
+}
