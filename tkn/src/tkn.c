@@ -2,6 +2,7 @@
 // Integrates TickernelGfx graphics core with Lua scripting engine
 
 #include "tkn.h"
+#include "tknGfxLua.h"
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
@@ -61,6 +62,9 @@ void *tknCreateContextPtr(const char *assetsPath, uint32_t luaLibraryCount, LuaL
         lua_setglobal(pLuaState, luaLibrary.name);
     }
 
+    // Register tknGfx library
+    bindTknGfxFunctions(pLuaState);
+
     // Load main Lua engine script
     char tknEngineLuaPath[FILENAME_MAX];
     snprintf(tknEngineLuaPath, FILENAME_MAX, "%s/lua/tknEngine.lua", assetsPath);
@@ -105,7 +109,7 @@ void tknDestroyContextPtr(TknContext *pTknContext)
     tknFree(pTknContext);
 }
 
-void tknUpdateContext(TknContext *pTknContext, Extent2D extent, uint32_t keyCodeStateCount, InputState *keyCodeStates, uint32_t mouseCodeStateCount, InputState *mouseCodeStates, float scrollingDeltaX, float scrollingDeltaY, float mousePositionNDCX, float mousePositionNDCY, const char *inputText, bool *pShouldQuit, bool *pImeEnabled)
+extern void tknUpdateContext(TknContext *pTknContext, uint32_t width, uint32_t height, uint32_t keyCodeStateCount, InputState *keyCodeStates, uint32_t mouseCodeStateCount, InputState *mouseCodeStates, float scrollingDeltaX, float scrollingDeltaY, float mousePositionNDCX, float mousePositionNDCY, const char *inputText, bool *pShouldQuit, bool *pImeEnabled)
 {
     lua_State *pLuaState = pTknContext->pLuaState;
     *pShouldQuit = false;
@@ -165,8 +169,8 @@ void tknUpdateContext(TknContext *pTknContext, Extent2D extent, uint32_t keyCode
     // Call update with pTknGfxContext, width, height - Lua controls frame synchronization
     lua_getfield(pLuaState, -1, "update");
     lua_pushlightuserdata(pLuaState, pTknGfxContext);
-    lua_pushinteger(pLuaState, extent.width);
-    lua_pushinteger(pLuaState, extent.height);
+    lua_pushinteger(pLuaState, width);
+    lua_pushinteger(pLuaState, height);
     assertLuaResult(pLuaState, lua_pcall(pLuaState, 3, 1, -6));
 
     // Get return value if present
@@ -175,16 +179,9 @@ void tknUpdateContext(TknContext *pTknContext, Extent2D extent, uint32_t keyCode
         *pShouldQuit = lua_toboolean(pLuaState, -1);
     }
     lua_pop(pLuaState, 1); // Pop return value, errorHandler and tknEngine table
-    
-    // ========================================================================
-    // WebGPU 风格的帧生命周期：
-    // 1. tknBeginCommandBuffer - 内部处理 acquire + fence wait + reset
-    // 2. recordFrame - Lua 脚本记录绘制命令
-    // 3. tknEndCommandBuffer - 内部处理 submit + present
-    // ========================================================================
-    
+
     tknBeginCommandBuffer(pTknGfxContext);
-    
+
     // Call recordFrame to record draw commands
     lua_getfield(pLuaState, -1, "recordFrame");
     lua_pushlightuserdata(pLuaState, pTknGfxContext);
@@ -208,4 +205,3 @@ void tknUpdateContext(TknContext *pTknContext, Extent2D extent, uint32_t keyCode
     *pImeEnabled = lua_toboolean(pLuaState, -1);
     lua_pop(pLuaState, 2);
 }
-
