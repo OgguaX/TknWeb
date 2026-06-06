@@ -180,3 +180,110 @@ void tknUpdateImagePtr(TknGfxContext *pTknGfxContext, TknImage *pTknImage, void 
     // Clean up staging buffer
     tknDestroyVkBuffer(pTknGfxContext, stagingBuffer, stagingBufferMemory);
 }
+
+void tknWriteImagePtr(void *pTknGfxContext, void *pTknImage, const void *pData, uint64_t dataSize,
+                      uint32_t width, uint32_t height, uint32_t depth,
+                      uint32_t mipLevel, uint32_t offsetX, uint32_t offsetY, uint32_t offsetZ)
+{
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    TknImage *pImage = (TknImage *)pTknImage;
+
+    // Create staging buffer
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    tknCreateVkBuffer(pGfxContext, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                      &stagingBuffer, &stagingBufferMemory);
+
+    // Copy image data to staging buffer
+    void *mappedData;
+    vkMapMemory(pGfxContext->vkDevice, stagingBufferMemory, 0, dataSize, 0, &mappedData);
+    memcpy(mappedData, pData, (size_t)dataSize);
+    vkUnmapMemory(pGfxContext->vkDevice, stagingBufferMemory);
+
+    // Begin command buffer
+    VkCommandBuffer commandBuffer = tknBeginSingleTimeCommands(pGfxContext);
+
+    // Transition image layout for transfer (SHADER_READ_ONLY -> TRANSFER_DST)
+    VkImageMemoryBarrier barrier1 = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = NULL,
+        .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = pImage->vkImage,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = mipLevel,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+    };
+
+    vkCmdPipelineBarrier(commandBuffer,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, NULL, 0, NULL, 1, &barrier1);
+
+    // Build copy region
+    VkBufferImageCopy region = {
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = mipLevel,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .imageOffset = {
+            .x = (int32_t)offsetX,
+            .y = (int32_t)offsetY,
+            .z = (int32_t)offsetZ,
+        },
+        .imageExtent = {
+            .width = width,
+            .height = height,
+            .depth = depth,
+        },
+    };
+
+    // Copy buffer to image
+    vkCmdCopyBufferToImage(commandBuffer, stagingBuffer, pImage->vkImage,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    // Transition image layout back to shader access (TRANSFER_DST -> SHADER_READ_ONLY)
+    VkImageMemoryBarrier barrier2 = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = NULL,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = pImage->vkImage,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = mipLevel,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+    };
+
+    vkCmdPipelineBarrier(commandBuffer,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         0, 0, NULL, 0, NULL, 1, &barrier2);
+
+    // Submit all commands
+    tknEndSingleTimeCommands(pGfxContext, commandBuffer);
+
+    // Clean up staging buffer
+    tknDestroyVkBuffer(pGfxContext, stagingBuffer, stagingBufferMemory);
+}

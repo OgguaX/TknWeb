@@ -15,6 +15,7 @@ extern void tknDestroyGfxContextPtr(void *pTknGfxContext);
 
 extern void *tknCreateImagePtr(void *pTknGfxContext, int dimension, int format, uint32_t mipLevelCount, int sampleCount, uint32_t width, uint32_t height, uint32_t depth, int imageUsageFlags);
 extern void tknDestroyImagePtr(void *pTknGfxContext, void *pTknImage);
+extern void tknWriteImagePtr(void *pTknGfxContext, void *pTknImage, const void *pData, uint64_t dataSize, uint32_t width, uint32_t height, uint32_t depth, uint32_t mipLevel, uint32_t offsetX, uint32_t offsetY, uint32_t offsetZ);
 
 extern void *tknCreateImageView(void *pTknGfxContext, uint32_t baseLayer, uint32_t layerCount, int aspectFlags, uint32_t baseMipLevel, uint32_t mipLevelCount, int dimension, int format, void *pTknImage);
 extern void tknDestroyImageView(void *pTknGfxContext, void *pTknImageView);

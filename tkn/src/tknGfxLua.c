@@ -114,6 +114,65 @@ static int luaDestroyImageView(lua_State *L)
     return 0;
 }
 
+static int luaWriteImagePtr(lua_State *L)
+{
+    // Parameter validation
+    void *pGfxContext = lua_touserdata(L, 1);
+    void *pImage = lua_touserdata(L, 2);
+    
+    if (!pGfxContext || !pImage)
+    {
+        lua_pushboolean(L, false);
+        lua_pushstring(L, "Invalid graphics context or image pointer");
+        return 2;
+    }
+    
+    // Handle string data source for binary image data (ASTC, ETC2, etc.)
+    const void *pData = NULL;
+    uint64_t dataSize = 0;
+    
+    if (lua_type(L, 3) == LUA_TSTRING)
+    {
+        size_t strLen;
+        pData = lua_tolstring(L, 3, &strLen);
+        dataSize = (uint64_t)strLen;
+        
+        if (dataSize == 0)
+        {
+            lua_pushboolean(L, false);
+            lua_pushstring(L, "Image data is empty");
+            return 2;
+        }
+    }
+    else
+    {
+        lua_pushboolean(L, false);
+        lua_pushstring(L, "Invalid data type for tknWriteImagePtr: expected string");
+        return 2;
+    }
+    
+    uint32_t width = (uint32_t)luaL_checkinteger(L, 4);
+    uint32_t height = (uint32_t)luaL_checkinteger(L, 5);
+    uint32_t depth = (uint32_t)luaL_checkinteger(L, 6);
+    uint32_t mipLevel = (uint32_t)luaL_checkinteger(L, 7);
+    uint32_t offsetX = (uint32_t)luaL_checkinteger(L, 8);
+    uint32_t offsetY = (uint32_t)luaL_checkinteger(L, 9);
+    uint32_t offsetZ = (uint32_t)luaL_checkinteger(L, 10);
+    
+    // Validate dimensions
+    if (width == 0 || height == 0 || depth == 0)
+    {
+        lua_pushboolean(L, false);
+        lua_pushstring(L, "Image dimensions cannot be zero");
+        return 2;
+    }
+    
+    tknWriteImagePtr(pGfxContext, pImage, pData, dataSize, width, height, depth, mipLevel, offsetX, offsetY, offsetZ);
+    
+    lua_pushboolean(L, true);
+    return 1;
+}
+
 // ============================================================================
 // Buffer Functions
 // ============================================================================
@@ -718,6 +777,7 @@ void bindTknGfxFunctions(lua_State *pLuaState)
         {"tknDestroyImagePtr", luaDestroyImagePtr},
         {"tknCreateImageView", luaCreateImageView},
         {"tknDestroyImageView", luaDestroyImageView},
+        {"tknWriteImagePtr", luaWriteImagePtr},
         
         // Uniform Buffer
         {"tknCreateUniformBuffer", luaCreateUniformBuffer},
