@@ -53,13 +53,11 @@ function wildMap.create(pTknGfxContext)
                 local structure = structureSystem.add(pTknGfxContext, map.structureMap, structureId, x, y)
                 map.structureMap.spatialMap[x][y] = structure
                 structureCount = structureCount + 1
-
-            else
-
             end
         end
     end
-    map.pTknMesh, map.pTknInstance, map.pTknDrawCall = groundSystem.createMesh(pTknGfxContext, map.groundMap)
+
+    map.pTknMesh = groundSystem.createMesh(pTknGfxContext, map.groundMap)
     -- Compute all structure transforms before updating instances
     transformSystem.update()
     structureSystem.updateInstances(pTknGfxContext, map.structureMap)
@@ -79,7 +77,7 @@ function wildMap.destroy(pTknGfxContext, map)
             end
         end
     end
-    groundSystem.destroyMesh(pTknGfxContext, map.pTknMesh, map.pTknInstance, map.pTknDrawCall)
+    groundSystem.destroyMesh(pTknGfxContext, map.pTknMesh)
     groundSystem.destroyMap(map.groundMap)
     map.structureMap = nil
 end

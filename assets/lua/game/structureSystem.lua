@@ -3,6 +3,7 @@ local tknVoxel = require("game.tknVoxel")
 local deferredRenderPass = require("game.deferredRenderer.deferredRenderPass")
 local transformSystem = require("game.transformSystem")
 local tknMath = require("tknMath")
+local vulkan = require("vulkan")
 local structureSystem = {}
 
 function structureSystem.setup(assetsPath, voxelPerMeter)
@@ -48,9 +49,10 @@ function structureSystem.createMap(length, width)
     local map = {
         spatialMap = {},
         typeToStructures = {},
-        typeToPTknMesh = {},
-        typeToPInstance = {},
-        typeToPDrawCall = {},
+        typeToPVertexBuffer = {},
+        typeToInstanceBuffers = {},
+        typeToVertexCounts = {},
+        typeToInstanceCounts = {},
     }
     for x = 1, length do
         map.spatialMap[x] = {}
@@ -74,17 +76,14 @@ end
 
 function structureSystem.add(pTknGfxContext, structureMap, id, x, y)
     -- Calculate rotation based on coordinate pairing
-    -- Use cantorPair to combine x, y into single value, then lcgRandom for direction
     local pairKey = tknMath.cantorPair(x, y)
     local directionRand = tknMath.lcgRandom(pairKey) % 4
 
     -- Convert direction (0-3) to Z-axis rotation quaternion
-    -- rotation = directionRand * 90 degrees around Z-axis (vertical)
-    -- rz = sin(directionRand * π/4), rw = cos(directionRand * π/4)
-    local rotations = {{0, 0, 0, 1}, -- 0°
-    {0, 0, 0.7071067811865476, 0.7071067811865476}, -- 90°
-    {0, 0, 1, 0}, -- 180°
-    {0, 0, 0.7071067811865476, -0.7071067811865476} -- 270°
+    local rotations = {{0, 0, 0, 1},
+    {0, 0, 0.7071067811865476, 0.7071067811865476},
+    {0, 0, 1, 0},
+    {0, 0, 0.7071067811865476, -0.7071067811865476}
     }
     local rot = rotations[directionRand + 1]
 
@@ -102,9 +101,10 @@ function structureSystem.add(pTknGfxContext, structureMap, id, x, y)
     if not structureMap.typeToStructures[id] then
         structureMap.typeToStructures[id] = {}
         local meshPath = structureSystem.assetPath .. "/models/" .. config.name .. ".tvox"
-        structureMap.typeToPTknMesh[id] = tknVoxel.readTvox(meshPath, pTknGfxContext, {0.5, 0.5, 0})
-        structureMap.typeToPInstance[id] = tkn.tknCreateInstancePtr(pTknGfxContext, deferredRenderPass.pInstanceVertexInputLayout, deferredRenderPass.instanceFormat, {})
-        structureMap.typeToPDrawCall[id] = tkn.tknCreateDrawCallPtr(pTknGfxContext, deferredRenderPass.pGeometryPipeline, deferredRenderPass.pGeometryMaterial, structureMap.typeToPTknMesh[id], structureMap.typeToPInstance[id])
+        structureMap.typeToPVertexBuffer[id] = tknVoxel.readTvox(meshPath, pTknGfxContext, {0.5, 0.5, 0})
+        structureMap.typeToInstanceBuffers[id] = {}
+        structureMap.typeToVertexCounts[id] = 0
+        structureMap.typeToInstanceCounts[id] = 0
     end
 
     table.insert(structureMap.typeToStructures[id], structure)
@@ -134,21 +134,46 @@ end
 
 function structureSystem.updateInstances(pTknGfxContext, structureMap)
     for type, list in pairs(structureMap.typeToStructures) do
-        local model = {}
+        local modelData = {}
         for i, s in ipairs(list) do
             local m = s.transform.model
             if m then
-                transposeToColumnMajor(m, model, (i - 1) * 16)
+                transposeToColumnMajor(m, modelData, (i - 1) * 16)
             else
                 local base = (i - 1) * 16
                 for j = 1, 16 do
-                    model[base + j] = 0
+                    modelData[base + j] = 0
                 end
             end
         end
-        tkn.tknUpdateInstancePtr(pTknGfxContext, structureMap.typeToPInstance[type], deferredRenderPass.instanceFormat, {
-            model = model,
-        })
+        
+        -- Pack instance data to binary (column-major matrices)
+        local packed = ""
+        for _, v in ipairs(modelData) do
+            packed = packed .. string.pack("f", v)
+        end
+        
+        -- Create or update instance buffer
+        if not structureMap.typeToInstanceBuffers[type] then
+            structureMap.typeToInstanceBuffers[type] = {}
+        end
+        
+        if #structureMap.typeToInstanceBuffers[type] == 0 then
+            -- First time: create buffer
+            local pInstanceBuffer = tkn.tknCreateBufferPtr(
+                pTknGfxContext,
+                math.max(#packed, 1),
+                vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                true,  -- dynamic
+                packed ~= "" and packed or "\0"
+            )
+            structureMap.typeToInstanceBuffers[type] = pInstanceBuffer
+            structureMap.typeToInstanceCounts[type] = #list
+        else
+            -- Update existing buffer
+            tkn.tknUpdateBuffer(pTknGfxContext, structureMap.typeToInstanceBuffers[type], 0, #packed, packed)
+            structureMap.typeToInstanceCounts[type] = #list
+        end
     end
 end
 

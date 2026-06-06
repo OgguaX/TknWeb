@@ -4,6 +4,7 @@ local tknMath = require("tknMath")
 local voxelConfig = require("game.voxelConfig")
 local deferredRenderPass = require("game.deferredRenderer.deferredRenderPass")
 local transformSystem = require("game.transformSystem")
+local vulkan = require("vulkan")
 local characterSystem = {}
 
 function characterSystem.setup(assetsPath, voxelPerMeter)
@@ -22,6 +23,25 @@ function characterSystem.teardown()
     characterSystem.bodyTvox = nil
     characterSystem.maskTvox = nil
     characterSystem.mask = nil
+end
+
+-- Helper: Pack vertex data to binary format
+-- Returns packed binary string
+local function packVertexData(vertices, vertexCount)
+    local packed = ""
+    for i = 1, vertexCount do
+        -- position (3 floats)
+        packed = packed .. string.pack("f", vertices.position[(i-1)*3 + 1] or 0)
+        packed = packed .. string.pack("f", vertices.position[(i-1)*3 + 2] or 0)
+        packed = packed .. string.pack("f", vertices.position[(i-1)*3 + 3] or 0)
+        -- color (1 uint32)
+        packed = packed .. string.pack("I4", vertices.color[i] or 0)
+        -- normal (1 uint32)
+        packed = packed .. string.pack("I4", vertices.normal[i] or 0)
+        -- pbr (1 uint32)
+        packed = packed .. string.pack("I4", vertices.pbr[i] or 0)
+    end
+    return packed
 end
 
 local function createBody(pTknGfxContext, seed)
@@ -66,13 +86,24 @@ local function createBody(pTknGfxContext, seed)
         table.insert(vertices.pbr, pbr)
     end
 
-    local pTknMesh = tkn.tknCreateMeshPtrWithData(pTknGfxContext, deferredRenderPass.pVoxelVertexInputLayout, deferredRenderPass.vertexFormat, vertices, nil, nil)
-    local pTknInstance = tkn.tknCreateInstancePtr(pTknGfxContext, deferredRenderPass.pInstanceVertexInputLayout, deferredRenderPass.instanceFormat, {})
-    local pTknDrawCall = tkn.tknCreateDrawCallPtr(pTknGfxContext, deferredRenderPass.pGeometryPipeline, deferredRenderPass.pGeometryMaterial, pTknMesh, pTknInstance)
+    local vertexCount = #tvox.records
+    local packed = packVertexData(vertices, vertexCount)
+    
+    -- Create vertex buffer (NEW API)
+    local pVertexBuffer = tkn.tknCreateBufferPtr(
+        pTknGfxContext,
+        math.max(#packed, 1),
+        vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        false,
+        packed ~= "" and packed or "\0"
+    )
+
+    -- Store mesh data (no DrawCall object in new API)
     return {
-        pTknMesh = pTknMesh,
-        pTknInstance = pTknInstance,
-        pTknDrawCall = pTknDrawCall,
+        pVertexBuffer = pVertexBuffer,
+        vertexCount = vertexCount,
+        instanceBuffer = nil,
+        instanceCount = 1,
     }
 end
 
@@ -114,11 +145,11 @@ local function createMask(pTknGfxContext, seed)
                 end
             end
         end
-        -- Left expansion (x-): only from left boundary voxels
+        -- Left expansion (x-): only from left boundary
         if record.x <= 0 and not occupied[key(record.x - 1, record.y, record.z)] then
             local n = tknMath.perlinNoise3D(seed + 2, record.x * 0.35, record.y * 0.35, record.z * 0.35)
-            if n > 0.1 then
-                local reach = math.floor(n * 3) + 1
+            if n > 0.0 then
+                local reach = math.floor(n * 4) + 1
                 for dx = 1, reach do
                     local nx = record.x - dx
                     local k = key(nx, record.y, record.z)
@@ -129,11 +160,11 @@ local function createMask(pTknGfxContext, seed)
                 end
             end
         end
-        -- Right expansion (x+): only from right boundary voxels
+        -- Right expansion (x+): only from right boundary
         if record.x >= maxX and not occupied[key(record.x + 1, record.y, record.z)] then
             local n = tknMath.perlinNoise3D(seed + 3, record.x * 0.35, record.y * 0.35, record.z * 0.35)
-            if n > 0.1 then
-                local reach = math.floor(n * 3) + 1
+            if n > 0.0 then
+                local reach = math.floor(n * 4) + 1
                 for dx = 1, reach do
                     local nx = record.x + dx
                     local k = key(nx, record.y, record.z)
@@ -146,15 +177,6 @@ local function createMask(pTknGfxContext, seed)
         end
     end
 
-    -- Build all voxels (original + extras)
-    local allRecords = {}
-    for _, record in ipairs(tvox.records) do
-        allRecords[#allRecords + 1] = record 
-    end
-    for _, extra in ipairs(extras) do
-        allRecords[#allRecords + 1] = extra
-    end
-
     local vertices = {
         position = {},
         color = {},
@@ -162,7 +184,8 @@ local function createMask(pTknGfxContext, seed)
         pbr = {},
     }
 
-    for _, record in ipairs(allRecords) do
+    -- Add original records
+    for _, record in ipairs(tvox.records) do
         local noise = tknMath.perlinNoise3D(seed, record.x * 0.27, record.y * 0.27, record.z * 3)
         local mat
         if noise < -0.4 then
@@ -187,13 +210,73 @@ local function createMask(pTknGfxContext, seed)
         table.insert(vertices.pbr, pbr)
     end
 
-    local pTknMesh = tkn.tknCreateMeshPtrWithData(pTknGfxContext, deferredRenderPass.pVoxelVertexInputLayout, deferredRenderPass.vertexFormat, vertices, nil, nil)
-    local pTknInstance = tkn.tknCreateInstancePtr(pTknGfxContext, deferredRenderPass.pInstanceVertexInputLayout, deferredRenderPass.instanceFormat, {})
-    local pTknDrawCall = tkn.tknCreateDrawCallPtr(pTknGfxContext, deferredRenderPass.pGeometryPipeline, deferredRenderPass.pGeometryMaterial, pTknMesh, pTknInstance)
+    -- Add extra voxels
+    for _, record in ipairs(extras) do
+        local noise = tknMath.perlinNoise3D(seed, record.x * 0.27, record.y * 0.27, record.z * 3)
+        local mat
+        if noise < -0.4 then
+            mat = darkGrass
+        elseif noise < 0.4 then
+            mat = grass
+        else
+            mat = lightGrass
+        end
+        local rgba = mat.color
+        local r = (rgba >> 24) & 0xFF
+        local g = (rgba >> 16) & 0xFF
+        local b = (rgba >> 8) & 0xFF
+        local a = rgba & 0xFF
+        local color = r | (g << 8) | (b << 16) | (a << 24)
+        table.insert(vertices.position, record.x - pivotOffsetX)
+        table.insert(vertices.position, record.y - pivotOffsetY)
+        table.insert(vertices.position, record.z - pivotOffsetZ)
+        table.insert(vertices.color, color)
+        table.insert(vertices.normal, record.normal)
+        local pbr = (mat.emissive & 0xF) | ((mat.roughness & 0xF) << 4) | ((mat.metallic & 0xF) << 8)
+        table.insert(vertices.pbr, pbr)
+    end
+
+    local vertexCount = #tvox.records + #extras
+    local packed = packVertexData(vertices, vertexCount)
+    
+    -- Create vertex buffer (NEW API)
+    local pVertexBuffer = tkn.tknCreateBufferPtr(
+        pTknGfxContext,
+        math.max(#packed, 1),
+        vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        false,
+        packed ~= "" and packed or "\0"
+    )
+
+    -- Create instance buffer for mask instances (one per character, will update dynamically)
+    -- Start with zeroed instance data
+    local maxCharacters = 100
+    local instancePacked = ""
+    for i = 1, maxCharacters do
+        -- model matrix (16 floats) - initialize to identity
+        for j = 1, 16 do
+            if j == 1 or j == 6 or j == 11 or j == 16 then
+                instancePacked = instancePacked .. string.pack("f", 1.0)
+            else
+                instancePacked = instancePacked .. string.pack("f", 0.0)
+            end
+        end
+    end
+
+    local pInstanceBuffer = tkn.tknCreateBufferPtr(
+        pTknGfxContext,
+        #instancePacked,
+        vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        true,  -- dynamic (will be updated)
+        instancePacked
+    )
+
     return {
-        pTknMesh = pTknMesh,
-        pTknInstance = pTknInstance,
-        pTknDrawCall = pTknDrawCall,
+        pVertexBuffer = pVertexBuffer,
+        vertexCount = vertexCount,
+        pInstanceBuffer = pInstanceBuffer,
+        maxInstanceCount = maxCharacters,
+        instanceCount = 0,
     }
 end
 
@@ -225,6 +308,10 @@ function characterSystem.add(pTknGfxContext, x, y, z, seed)
     }
 
     table.insert(characterSystem.characters, char)
+    
+    -- Update mask instance count
+    characterSystem.mask.instanceCount = #characterSystem.characters
+    
     return char
 end
 
@@ -254,14 +341,6 @@ function characterSystem.updateInstances(pTknGfxContext)
     local list = characterSystem.characters
     local maskModel = {}
     for i, char in ipairs(list) do
-        local bm = char.bodyTransform.model
-        if bm then
-            local bodyModel = {}
-            transposeToColumnMajor(bm, bodyModel, 0)
-            tkn.tknUpdateInstancePtr(pTknGfxContext, char.body.pTknInstance, deferredRenderPass.instanceFormat, {
-                model = bodyModel,
-            })
-        end
         local mm = char.maskTransform.model
         if mm then
             transposeToColumnMajor(mm, maskModel, (i - 1) * 16)
@@ -272,9 +351,28 @@ function characterSystem.updateInstances(pTknGfxContext)
             end
         end
     end
-    tkn.tknUpdateInstancePtr(pTknGfxContext, characterSystem.mask.pTknInstance, deferredRenderPass.instanceFormat, {
-        model = maskModel,
-    })
+    
+    -- Pack instance data to binary
+    local packed = ""
+    for i = 1, characterSystem.mask.maxInstanceCount do
+        if i <= #maskModel / 16 then
+            for j = 1, 16 do
+                packed = packed .. string.pack("f", maskModel[(i-1)*16 + j] or 0)
+            end
+        else
+            -- Remaining instances: identity matrix
+            for j = 1, 16 do
+                if j == 1 or j == 6 or j == 11 or j == 16 then
+                    packed = packed .. string.pack("f", 1.0)
+                else
+                    packed = packed .. string.pack("f", 0.0)
+                end
+            end
+        end
+    end
+    
+    -- Update instance buffer (NEW API)
+    tkn.tknUpdateBuffer(pTknGfxContext, characterSystem.mask.pInstanceBuffer, 0, #packed, packed)
 end
 
 function characterSystem.remove(char)
@@ -292,6 +390,11 @@ function characterSystem.remove(char)
     char.bodyTransform = nil
     char.characterTransform = nil
     char.body = nil
+    
+    -- Update mask instance count
+    if characterSystem.mask then
+        characterSystem.mask.instanceCount = #characterSystem.characters
+    end
 end
 
 return characterSystem

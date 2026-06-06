@@ -505,12 +505,10 @@ function mapEditorScene.stopGfx(game, pTknGfxContext)
     mapEditorScene.window = nil
 
     -- Mesh & map
-    if mapEditorScene.pGroundTknDrawCall then
-        groundSystem.destroyMesh(pTknGfxContext, mapEditorScene.pGroundTknMesh, mapEditorScene.pGroundTknInstance, mapEditorScene.pGroundTknDrawCall)
+    if mapEditorScene.pGroundTknMesh then
+        groundSystem.destroyMesh(pTknGfxContext, mapEditorScene.pGroundTknMesh)
     end
     mapEditorScene.pGroundTknMesh = nil
-    mapEditorScene.pGroundTknInstance = nil
-    mapEditorScene.pGroundTknDrawCall = nil
 
     if mapEditorScene.groundMap then
         groundSystem.destroyMap(mapEditorScene.groundMap)
@@ -536,11 +534,9 @@ function mapEditorScene.updateGfx(game, pTknGfxContext, width, height)
     if mapEditorScene.pendingMeshRebuild then
         mapEditorScene.pendingMeshRebuild = false
 
-        if mapEditorScene.pGroundTknDrawCall then
-            groundSystem.destroyMesh(pTknGfxContext, mapEditorScene.pGroundTknMesh, mapEditorScene.pGroundTknInstance, mapEditorScene.pGroundTknDrawCall)
+        if mapEditorScene.pGroundTknMesh then
+            groundSystem.destroyMesh(pTknGfxContext, mapEditorScene.pGroundTknMesh)
             mapEditorScene.pGroundTknMesh = nil
-            mapEditorScene.pGroundTknInstance = nil
-            mapEditorScene.pGroundTknDrawCall = nil
         end
 
         if mapEditorScene.groundMap then
@@ -549,14 +545,16 @@ function mapEditorScene.updateGfx(game, pTknGfxContext, width, height)
         end
 
         mapEditorScene.groundMap = groundSystem.createMap(321312, mapEditorScene.editorLength, mapEditorScene.editorWidth, mapEditorScene.editGroundMap)
-        mapEditorScene.pGroundTknMesh, mapEditorScene.pGroundTknInstance, mapEditorScene.pGroundTknDrawCall = groundSystem.createMesh(pTknGfxContext, mapEditorScene.groundMap)
+        mapEditorScene.pGroundTknMesh = groundSystem.createMesh(pTknGfxContext, mapEditorScene.groundMap)
     end
 end
 
 function mapEditorScene.recordFrame(game, pTknGfxContext, pTknFrame)
-    if mapEditorScene.pGroundTknDrawCall then
-        tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, mapEditorScene.pGroundTknDrawCall)
-    end
+    -- TODO: Implement new low-level rendering API calls
+    -- if mapEditorScene.pGroundTknDrawCall then
+    --     tkn.tknBindVertexBuffer(pTknGfxContext, mapEditorScene.pGroundTknMesh.pVertexBuffer, 0)
+    --     tkn.tknDraw(pTknGfxContext, mapEditorScene.pGroundTknMesh.vertexCount, 1, 0, 0)
+    -- end
 end
 
 return mapEditorScene

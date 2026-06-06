@@ -52,71 +52,75 @@ local function setupGlobalMaterial(pTknGfxContext)
         count = 1,
     }}
 
+    -- DEPRECATED: Old material system
     -- Create global uniform buffer
-    local pGlobalUniformBuffer = {
-        view = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-        proj = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-        near = 0.01,
-        far = 32,
-        fov = 90,
-        time = 0.0,
-        frameCount = 0,
-        screenWidth = 800,
-        screenHeight = 600,
-    }
-    tknEngine.pGlobalUniformBuffer = tkn.tknCreateUniformBufferPtr(pTknGfxContext, tknEngine.globalUniformBufferFormat, pGlobalUniformBuffer)
-    local inputBindings = {{
-        vkDescriptorType = vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        pTknUniformBuffer = tknEngine.pGlobalUniformBuffer,
-        binding = 0,
-    }}
-    tknEngine.pGlobalMaterial = tkn.tknGetGlobalMaterialPtr(pTknGfxContext)
-    tkn.tknUpdateMaterialPtr(pTknGfxContext, tknEngine.pGlobalMaterial, inputBindings)
+    -- local pGlobalUniformBuffer = {
+    --     view = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+    --     proj = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+    --     near = 0.01,
+    --     far = 32,
+    --     fov = 90,
+    --     time = 0.0,
+    --     frameCount = 0,
+    --     screenWidth = 800,
+    --     screenHeight = 600,
+    -- }
+    -- tknEngine.pGlobalUniformBuffer = tkn.tknCreateUniformBufferPtr(pTknGfxContext, tknEngine.globalUniformBufferFormat, pGlobalUniformBuffer)
+    -- local inputBindings = {{
+    --     vkDescriptorType = vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    --     pTknUniformBuffer = tknEngine.pGlobalUniformBuffer,
+    --     binding = 0,
+    -- }}
+    -- tknEngine.pGlobalMaterial = tkn.tknGetGlobalMaterialPtr(pTknGfxContext)
+    -- tkn.tknUpdateMaterialPtr(pTknGfxContext, tknEngine.pGlobalMaterial, inputBindings)
 end
 
 local function teardownGlobalMaterial(pTknGfxContext)
-    tkn.tknDestroyUniformBufferPtr(pTknGfxContext, tknEngine.pGlobalUniformBuffer)
+    -- DEPRECATED: Old material system
+    -- tkn.tknDestroyUniformBufferPtr(pTknGfxContext, tknEngine.pGlobalUniformBuffer)
     tknEngine.pGlobalUniformBuffer = nil
     tknEngine.pGlobalMaterial = nil
     tknEngine.globalUniformBufferFormat = nil
 end
 
 local function updateGlobalMaterial(pTknGfxContext, camera, time, frameCount, screenWidth, screenHeight)
-    local view = camera.view
-    local proj = camera.proj
-    -- Create global uniform buffer
-    local pGlobalUniformBuffer = {
-        view = view,
-        proj = proj,
-        near = camera.near,
-        far = camera.far,
-        fov = camera.fov,
-        time = time,
-        frameCount = frameCount,
-        screenWidth = screenWidth,
-        screenHeight = screenHeight,
-    }
-    tkn.tknUpdateUniformBufferPtr(pTknGfxContext, tknEngine.pGlobalUniformBuffer, tknEngine.globalUniformBufferFormat, pGlobalUniformBuffer, nil)
-    local inputBindings = {{
-        vkDescriptorType = vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        pTknUniformBuffer = tknEngine.pGlobalUniformBuffer,
-        binding = 0,
-    }}
-    tknEngine.pGlobalMaterial = tkn.tknGetGlobalMaterialPtr(pTknGfxContext)
-    tkn.tknUpdateMaterialPtr(pTknGfxContext, tknEngine.pGlobalMaterial, inputBindings)
+    -- DEPRECATED: Old material system
+    -- local view = camera.view
+    -- local proj = camera.proj
+    -- -- Create global uniform buffer
+    -- local pGlobalUniformBuffer = {
+    --     view = view,
+    --     proj = proj,
+    --     near = camera.near,
+    --     far = camera.far,
+    --     fov = camera.fov,
+    --     time = time,
+    --     frameCount = frameCount,
+    --     screenWidth = screenWidth,
+    --     screenHeight = screenHeight,
+    -- }
+    -- tkn.tknUpdateUniformBufferPtr(pTknGfxContext, tknEngine.pGlobalUniformBuffer, tknEngine.globalUniformBufferFormat, pGlobalUniformBuffer, nil)
+    -- local inputBindings = {{
+    --     vkDescriptorType = vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    --     pTknUniformBuffer = tknEngine.pGlobalUniformBuffer,
+    --     binding = 0,
+    -- }}
+    -- tknEngine.pGlobalMaterial = tkn.tknGetGlobalMaterialPtr(pTknGfxContext)
+    -- tkn.tknUpdateMaterialPtr(pTknGfxContext, tknEngine.pGlobalMaterial, inputBindings)
 end
 
 local function updateDeferredGeometrySubpassMaterial(pTknGfxContext, camera, screenWidth, screenHeight, sizeFactor)
-    camera.screenWidth = screenWidth
-    camera.screenHeight = screenHeight
-    local aspect = (screenHeight ~= 0) and (screenWidth / screenHeight) or (16.0 / 9.0)
-    local focalX = camera.screenWidth * camera.proj[1] * 0.5 -- proj[1] == m00 (f/aspect)
-    local focalY = camera.screenHeight * camera.proj[6] * 0.5 -- proj[6] == m11 (f)
+    -- DEPRECATED: Old uniform buffer and material system
+    -- camera.screenWidth = screenWidth
+    -- camera.screenHeight = screenHeight
+    -- local aspect = (screenHeight ~= 0) and (screenWidth / screenHeight) or (16.0 / 9.0)
+    -- local focalX = camera.screenWidth * camera.proj[1] * 0.5 -- proj[1] == m00 (f/aspect)
+    -- local focalY = camera.screenHeight * camera.proj[6] * 0.5 -- proj[6] == m11 (f)
     -- print("focalX:", focalX, "focalY:", focalY)
-    local focal = math.max(focalX, focalY)
-    tkn.tknUpdateUniformBufferPtr(pTknGfxContext, deferredRenderPass.pGeometryUniformBuffer, deferredRenderPass.geometryUniformBufferFormat, {
-        pointSize = focal * sizeFactor,
-    }, nil)
+    -- local focal = math.max(focalX, focalY)
+    -- tkn.tknUpdateUniformBufferPtr(pTknGfxContext, deferredRenderPass.pGeometryUniformBuffer, deferredRenderPass.geometryUniformBufferFormat, {
+    --     pointSize = focal * sizeFactor,
+    -- }, nil)
 end
 
 function tknEngine.start(pTknGfxContext, assetsPath)
@@ -189,12 +193,16 @@ function tknEngine.update(pTknGfxContext, width, height)
 end
 
 function tknEngine.recordFrame(pTknGfxContext, pTknFrame)
-    tkn.tknBeginRenderPassPtr(pTknGfxContext, pTknFrame, deferredRenderPass.pTknRenderPass)
-    game.recordFrame(pTknGfxContext, pTknFrame)
-    tkn.tknNextSubpassPtr(pTknGfxContext, pTknFrame)
-    tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, deferredRenderPass.pLightingDrawCall)
-    tkn.tknEndRenderPassPtr(pTknGfxContext, pTknFrame)
-    ui.recordFrame(pTknGfxContext, pTknFrame)
+    -- TODO: Implement new low-level rendering API pipeline
+    -- In new API, would:
+    -- 1. Begin render pass for game
+    -- 2. Record game scene renders
+    -- 3. End render pass
+    -- 4. Begin UI render pass
+    -- 5. Record UI scene renders
+    -- 6. End render pass
+    -- game.recordFrame(pTknGfxContext, pTknFrame)
+    -- ui.recordFrame(pTknGfxContext, pTknFrame)
 end
 
 _G.tknEngine = tknEngine

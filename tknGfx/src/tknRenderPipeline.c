@@ -35,28 +35,177 @@ static uint32_t tknGetVkFormatSize(VkFormat format)
     }
 }
 
-static uint32_t tknComputeStride(const TknVertexInputLayout *pLayout)
+static uint32_t tknComputeStride(const VkVertexInputAttributeDescription *pAttrs, uint32_t attrCount)
 {
     uint32_t stride = 0;
-    for (uint32_t i = 0; i < pLayout->vkVertexInputAttributeDescriptionCount; i++)
+    for (uint32_t i = 0; i < attrCount; i++)
     {
-        uint32_t end = pLayout->vkVertexInputAttributeDescriptions[i].offset + tknGetVkFormatSize(pLayout->vkVertexInputAttributeDescriptions[i].format);
+        uint32_t end = pAttrs[i].offset + tknGetVkFormatSize(pAttrs[i].format);
         if (end > stride)
             stride = end;
     }
     return stride;
 }
 
-void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, const int *pColorAttachmentFormats, int depthAttachmentFormat, void *pTknRenderPassBindingGroupLayout, uint32_t spvPathCount, const char **spvPaths, void *pTknMeshVertexInputLayout, void *pTknInstanceVertexInputLayout, void *pVkPipelineInputAssemblyStateCreateInfo, void *pVkPipelineViewportStateCreateInfo, void *pVkPipelineRasterizationStateCreateInfo, void *pVkPipelineMultisampleStateCreateInfo, void *pVkPipelineDepthStencilStateCreateInfo, void *pVkPipelineColorBlendStateCreateInfo, void *pVkPipelineDynamicStateCreateInfo)
+
+
+void *tknCreatePipelinePtr(void *pTknGfxContext, void *pTknRenderPassBindingGroupLayout, uint32_t spvPathCount, const char **spvPaths, const TknVertexState *pVertexState, const TknPrimitiveState *pPrimitiveState, const TknFragmentState *pFragmentState, const TknPipelineMultisampleState *pMultisampleState, const TknPipelineDepthStencilState *pDepthStencilState, int depthAttachmentFormat)
 {
     TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
-    TknVertexInputLayout *pMeshLayout = (TknVertexInputLayout *)pTknMeshVertexInputLayout;
-    TknVertexInputLayout *pInstanceLayout = (TknVertexInputLayout *)pTknInstanceVertexInputLayout;
     TknBindingGroupLayout *pRenderPassBindingGroupLayout = (TknBindingGroupLayout *)pTknRenderPassBindingGroupLayout;
+    
+    // Extract vertex attributes from vertex state
+    uint32_t vkMeshVertexInputAttributeDescriptionCount = pVertexState->meshAttributeCount;
+    uint32_t vkInstanceVertexInputAttributeDescriptionCount = pVertexState->instanceAttributeCount;
+    
+    // Convert mesh vertex attributes to Vulkan format
+    VkVertexInputAttributeDescription *pMeshAttrs = NULL;
+    if (vkMeshVertexInputAttributeDescriptionCount > 0 && pVertexState->pMeshAttributes != NULL)
+    {
+        pMeshAttrs = tknMalloc(sizeof(VkVertexInputAttributeDescription) * vkMeshVertexInputAttributeDescriptionCount);
+        for (uint32_t i = 0; i < vkMeshVertexInputAttributeDescriptionCount; i++)
+        {
+            pMeshAttrs[i] = (VkVertexInputAttributeDescription){
+                .location = pVertexState->pMeshAttributes[i].location,
+                .binding = TKN_VERTEX_BINDING_DESCRIPTION,
+                .format = (VkFormat)pVertexState->pMeshAttributes[i].format,
+                .offset = pVertexState->pMeshAttributes[i].offset,
+            };
+        }
+    }
+    
+    // Convert instance vertex attributes to Vulkan format
+    VkVertexInputAttributeDescription *pInstanceAttrs = NULL;
+    if (vkInstanceVertexInputAttributeDescriptionCount > 0 && pVertexState->pInstanceAttributes != NULL)
+    {
+        pInstanceAttrs = tknMalloc(sizeof(VkVertexInputAttributeDescription) * vkInstanceVertexInputAttributeDescriptionCount);
+        for (uint32_t i = 0; i < vkInstanceVertexInputAttributeDescriptionCount; i++)
+        {
+            pInstanceAttrs[i] = (VkVertexInputAttributeDescription){
+                .location = pVertexState->pInstanceAttributes[i].location,
+                .binding = TKN_INSTANCE_BINDING_DESCRIPTION,
+                .format = (VkFormat)pVertexState->pInstanceAttributes[i].format,
+                .offset = pVertexState->pInstanceAttributes[i].offset,
+            };
+        }
+    }
 
     // Create pipeline binding group layout from shaders
     void *pTknPipelineLayout = tknCreateBindingGroupLayout(pGfxContext, spvPathCount, spvPaths, TKN_PIPELINE_DESCRIPTOR_SET);
     TknBindingGroupLayout *pPipelineGroupLayout = (TknBindingGroupLayout *)pTknPipelineLayout;
+
+    // Convert primitive/rasterization state
+    VkPipelineInputAssemblyStateCreateInfo vkInputAssemblyState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = (VkPrimitiveTopology)pPrimitiveState->topology,
+        .primitiveRestartEnable = VK_FALSE,
+    };
+
+    VkPipelineRasterizationStateCreateInfo vkRasterizationState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode = (VkPolygonMode)pPrimitiveState->polygonMode,
+        .cullMode = (VkCullModeFlags)pPrimitiveState->cullMode,
+        .frontFace = (VkFrontFace)pPrimitiveState->frontFace,
+        .depthBiasEnable = pPrimitiveState->depthBiasEnable,
+        .depthBiasConstantFactor = pPrimitiveState->depthBiasConstantFactor,
+        .depthBiasClamp = pPrimitiveState->depthBiasClamp,
+        .depthBiasSlopeFactor = pPrimitiveState->depthBiasSlopeFactor,
+        .lineWidth = pPrimitiveState->lineWidth,
+    };
+
+    // Viewport and scissor are set at runtime, not in pipeline
+    // Default to NULL - will be set via tknSetViewport/tknSetScissor
+    VkPipelineViewportStateCreateInfo vkViewportState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .pViewports = NULL,  // Will be dynamically set
+        .scissorCount = 1,
+        .pScissors = NULL,   // Will be dynamically set
+    };
+
+    // Convert multisample state
+    VkPipelineMultisampleStateCreateInfo vkMultisampleState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = (VkSampleCountFlagBits)pMultisampleState->rasterizationSamples,
+        .sampleShadingEnable = VK_FALSE,
+        .minSampleShading = 0.0f,
+        .alphaToCoverageEnable = pMultisampleState->alphaToCoverageEnable,
+        .alphaToOneEnable = VK_FALSE,
+    };
+
+    // Convert depth stencil state
+    VkPipelineDepthStencilStateCreateInfo vkDepthStencilState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = pDepthStencilState->depthTestEnable,
+        .depthWriteEnable = pDepthStencilState->depthWriteEnable,
+        .depthCompareOp = (VkCompareOp)pDepthStencilState->depthCompareOp,
+        .depthBoundsTestEnable = VK_FALSE,
+        .stencilTestEnable = pDepthStencilState->stencilTestEnable,
+        .front = (VkStencilOpState){
+            .failOp = (VkStencilOp)pDepthStencilState->front.failOp,
+            .passOp = (VkStencilOp)pDepthStencilState->front.passOp,
+            .depthFailOp = (VkStencilOp)pDepthStencilState->front.depthFailOp,
+            .compareOp = (VkCompareOp)pDepthStencilState->front.compareOp,
+            .compareMask = pDepthStencilState->front.compareMask,
+            .writeMask = pDepthStencilState->front.writeMask,
+            .reference = pDepthStencilState->front.reference,
+        },
+        .back = (VkStencilOpState){
+            .failOp = (VkStencilOp)pDepthStencilState->back.failOp,
+            .passOp = (VkStencilOp)pDepthStencilState->back.passOp,
+            .depthFailOp = (VkStencilOp)pDepthStencilState->back.depthFailOp,
+            .compareOp = (VkCompareOp)pDepthStencilState->back.compareOp,
+            .compareMask = pDepthStencilState->back.compareMask,
+            .writeMask = pDepthStencilState->back.writeMask,
+            .reference = pDepthStencilState->back.reference,
+        },
+        .minDepthBounds = 0.0f,
+        .maxDepthBounds = 1.0f,
+    };
+
+    // Convert color blend state
+    VkPipelineColorBlendAttachmentState *pVkColorBlendAttachments = NULL;
+    if (pFragmentState->colorBlend.attachmentCount > 0 && pFragmentState->colorBlend.pAttachments)
+    {
+        pVkColorBlendAttachments = tknMalloc(sizeof(VkPipelineColorBlendAttachmentState) * pFragmentState->colorBlend.attachmentCount);
+        for (uint32_t i = 0; i < pFragmentState->colorBlend.attachmentCount; i++)
+        {
+            pVkColorBlendAttachments[i] = (VkPipelineColorBlendAttachmentState){
+                .blendEnable = pFragmentState->colorBlend.pAttachments[i].blendEnable,
+                .srcColorBlendFactor = (VkBlendFactor)pFragmentState->colorBlend.pAttachments[i].srcColorBlendFactor,
+                .dstColorBlendFactor = (VkBlendFactor)pFragmentState->colorBlend.pAttachments[i].dstColorBlendFactor,
+                .colorBlendOp = (VkBlendOp)pFragmentState->colorBlend.pAttachments[i].colorBlendOp,
+                .srcAlphaBlendFactor = (VkBlendFactor)pFragmentState->colorBlend.pAttachments[i].srcAlphaBlendFactor,
+                .dstAlphaBlendFactor = (VkBlendFactor)pFragmentState->colorBlend.pAttachments[i].dstAlphaBlendFactor,
+                .alphaBlendOp = (VkBlendOp)pFragmentState->colorBlend.pAttachments[i].alphaBlendOp,
+                .colorWriteMask = (VkColorComponentFlags)pFragmentState->colorBlend.pAttachments[i].colorWriteMask,
+            };
+        }
+    }
+
+    VkPipelineColorBlendStateCreateInfo vkColorBlendState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = VK_FALSE,
+        .logicOp = VK_LOGIC_OP_COPY,
+        .attachmentCount = pFragmentState->colorBlend.attachmentCount,
+        .pAttachments = pVkColorBlendAttachments,
+    };
+    // Copy blend constants (always present as fixed-size array in struct)
+    for (int i = 0; i < 4; i++)
+        vkColorBlendState.blendConstants[i] = pFragmentState->colorBlend.blendConstants[i];
+
+    // Dynamic state: viewport and scissor are set at render time
+    VkDynamicState dynamicStates[] = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+    };
+    VkPipelineDynamicStateCreateInfo vkDynamicState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = 2,
+        .pDynamicStates = dynamicStates,
+    };
 
     // Get shader modules
     VkShaderModule *vkShaderModules = tknMalloc(sizeof(VkShaderModule) * pPipelineGroupLayout->shaderPathCount);
@@ -80,54 +229,50 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
         };
     }
 
-    // Build vertex input state
-    TknVertexInputLayout layouts[TKN_MAX_VERTEX_BINDING_DESCRIPTION] = {
-        pMeshLayout != NULL ? *pMeshLayout : (TknVertexInputLayout){0},
-        pInstanceLayout != NULL ? *pInstanceLayout : (TknVertexInputLayout){0},
-    };
-    VkVertexInputRate inputRates[TKN_MAX_VERTEX_BINDING_DESCRIPTION] = {VK_VERTEX_INPUT_RATE_VERTEX, VK_VERTEX_INPUT_RATE_INSTANCE};
-
-    VkVertexInputBindingDescription vkBindings[TKN_MAX_VERTEX_BINDING_DESCRIPTION];
-    uint32_t bindingCount = 0;
-    uint32_t totalAttrCount = 0;
-    for (uint32_t i = 0; i < TKN_MAX_VERTEX_BINDING_DESCRIPTION; i++)
-    {
-        if (layouts[i].vkVertexInputAttributeDescriptionCount > 0)
-        {
-            vkBindings[bindingCount++] = (VkVertexInputBindingDescription){
-                .binding = (uint32_t)layouts[i].tknVertexBinding,
-                .stride = tknComputeStride(&layouts[i]),
-                .inputRate = inputRates[i],
-            };
-            totalAttrCount += layouts[i].vkVertexInputAttributeDescriptionCount;
-        }
-    }
-
+    // Merge mesh and instance attribute descriptions
     VkVertexInputAttributeDescription *vkVertexInputAttributeDescriptions = NULL;
-    if (totalAttrCount > 0)
+    uint32_t vkVertexInputAttributeDescriptionCount = 0;
+
+    if (vkMeshVertexInputAttributeDescriptionCount > 0 || vkInstanceVertexInputAttributeDescriptionCount > 0)
     {
-        vkVertexInputAttributeDescriptions = tknMalloc(sizeof(VkVertexInputAttributeDescription) * totalAttrCount);
-        uint32_t attrOffset = 0;
-        for (uint32_t i = 0; i < TKN_MAX_VERTEX_BINDING_DESCRIPTION; i++)
-        {
-            if (layouts[i].vkVertexInputAttributeDescriptionCount > 0 && layouts[i].vkVertexInputAttributeDescriptions != NULL)
-            {
-                memcpy(vkVertexInputAttributeDescriptions + attrOffset, layouts[i].vkVertexInputAttributeDescriptions,
-                       sizeof(VkVertexInputAttributeDescription) * layouts[i].vkVertexInputAttributeDescriptionCount);
-                attrOffset += layouts[i].vkVertexInputAttributeDescriptionCount;
-            }
-        }
+        vkVertexInputAttributeDescriptionCount = vkMeshVertexInputAttributeDescriptionCount + vkInstanceVertexInputAttributeDescriptionCount;
+        vkVertexInputAttributeDescriptions = tknMalloc(sizeof(VkVertexInputAttributeDescription) * vkVertexInputAttributeDescriptionCount);
+        
+        if (vkMeshVertexInputAttributeDescriptionCount > 0 && pMeshAttrs != NULL)
+            memcpy(vkVertexInputAttributeDescriptions, pMeshAttrs, sizeof(VkVertexInputAttributeDescription) * vkMeshVertexInputAttributeDescriptionCount);
+        
+        if (vkInstanceVertexInputAttributeDescriptionCount > 0 && pInstanceAttrs != NULL)
+            memcpy(vkVertexInputAttributeDescriptions + vkMeshVertexInputAttributeDescriptionCount, pInstanceAttrs, 
+                   sizeof(VkVertexInputAttributeDescription) * vkInstanceVertexInputAttributeDescriptionCount);
     }
+
+    // Compute strides
+    uint32_t vertexStride = tknComputeStride(pMeshAttrs, vkMeshVertexInputAttributeDescriptionCount);
+    uint32_t instanceStride = tknComputeStride(pInstanceAttrs, vkInstanceVertexInputAttributeDescriptionCount);
+
+    // Build vertex input state
+    VkVertexInputBindingDescription vkBindingDescriptions[TKN_MAX_VERTEX_BINDING_DESCRIPTION] = {
+        {
+            .binding = TKN_VERTEX_BINDING_DESCRIPTION,
+            .stride = vertexStride,
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        },
+        {
+            .binding = TKN_INSTANCE_BINDING_DESCRIPTION,
+            .stride = instanceStride,
+            .inputRate = VK_VERTEX_INPUT_RATE_INSTANCE,
+        },
+    };
 
     VkPipelineVertexInputStateCreateInfo vkVertexInputState = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = bindingCount,
-        .pVertexBindingDescriptions = vkBindings,
-        .vertexAttributeDescriptionCount = totalAttrCount,
+        .vertexBindingDescriptionCount = TKN_MAX_VERTEX_BINDING_DESCRIPTION,
+        .pVertexBindingDescriptions = vkBindingDescriptions,
+        .vertexAttributeDescriptionCount = vkVertexInputAttributeDescriptionCount,
         .pVertexAttributeDescriptions = vkVertexInputAttributeDescriptions,
     };
 
-    // Pipeline layout with all three descriptor set layouts
+    // Pipeline layout
     VkDescriptorSetLayout vkSetLayouts[TKN_MAX_DESCRIPTOR_SET] = {0};
     vkSetLayouts[TKN_GLOBAL_DESCRIPTOR_SET] = pGfxContext->pTknGlobalBindingGroupLayout->vkDescriptorSetLayout;
     vkSetLayouts[TKN_RENDERPASS_DESCRIPTOR_SET] = pRenderPassBindingGroupLayout->vkDescriptorSetLayout;
@@ -144,8 +289,8 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
     // Dynamic rendering
     VkPipelineRenderingCreateInfoKHR vkRenderingCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
-        .colorAttachmentCount = colorAttachmentCount,
-        .pColorAttachmentFormats = (const VkFormat *)pColorAttachmentFormats,
+        .colorAttachmentCount = pFragmentState->colorAttachmentCount,
+        .pColorAttachmentFormats = (const VkFormat *)pFragmentState->pColorAttachmentFormats,
         .depthAttachmentFormat = (VkFormat)depthAttachmentFormat,
     };
 
@@ -156,33 +301,66 @@ void *tknCreatePipelinePtr(void *pTknGfxContext, uint32_t colorAttachmentCount, 
         .stageCount = pPipelineGroupLayout->shaderPathCount,
         .pStages = pStages,
         .pVertexInputState = &vkVertexInputState,
-        .pInputAssemblyState = (const VkPipelineInputAssemblyStateCreateInfo *)pVkPipelineInputAssemblyStateCreateInfo,
-        .pViewportState = (const VkPipelineViewportStateCreateInfo *)pVkPipelineViewportStateCreateInfo,
-        .pRasterizationState = (const VkPipelineRasterizationStateCreateInfo *)pVkPipelineRasterizationStateCreateInfo,
-        .pMultisampleState = (const VkPipelineMultisampleStateCreateInfo *)pVkPipelineMultisampleStateCreateInfo,
-        .pDepthStencilState = (const VkPipelineDepthStencilStateCreateInfo *)pVkPipelineDepthStencilStateCreateInfo,
-        .pColorBlendState = (const VkPipelineColorBlendStateCreateInfo *)pVkPipelineColorBlendStateCreateInfo,
-        .pDynamicState = (const VkPipelineDynamicStateCreateInfo *)pVkPipelineDynamicStateCreateInfo,
+        .pInputAssemblyState = &vkInputAssemblyState,
+        .pViewportState = &vkViewportState,
+        .pRasterizationState = &vkRasterizationState,
+        .pMultisampleState = &vkMultisampleState,
+        .pDepthStencilState = &vkDepthStencilState,
+        .pColorBlendState = &vkColorBlendState,
+        .pDynamicState = &vkDynamicState,
         .layout = vkPipelineLayout,
         .renderPass = VK_NULL_HANDLE,
     };
     VkPipeline vkPipeline;
     tknAssertVkResult(vkCreateGraphicsPipelines(pGfxContext->vkDevice, VK_NULL_HANDLE, 1, &vkPipelineCreateInfo, NULL, &vkPipeline));
 
-    // Cleanup temporary resources
+    // Free temporary converted structures
+    if (pVkColorBlendAttachments)
+        tknFree(pVkColorBlendAttachments);
+    if (vkVertexInputAttributeDescriptions != NULL)
+        tknFree(vkVertexInputAttributeDescriptions);
+    if (pMeshAttrs != NULL)
+        tknFree(pMeshAttrs);
+    if (pInstanceAttrs != NULL)
+        tknFree(pInstanceAttrs);
+
+    // Cleanup shader modules
     for (uint32_t i = 0; i < pPipelineGroupLayout->shaderPathCount; i++)
         vkDestroyShaderModule(pGfxContext->vkDevice, vkShaderModules[i], NULL);
     tknFree(vkShaderModules);
     tknFree(pStages);
-    if (vkVertexInputAttributeDescriptions != NULL)
-        tknFree(vkVertexInputAttributeDescriptions);
+
+    // Create cached vertex input attribute layout copies (storing original TknVertexInputAttributeLayout, not Vulkan format)
+    TknVertexInputAttributeLayout *pMeshAttrCopy = NULL;
+    TknVertexInputAttributeLayout *pInstanceAttrCopy = NULL;
+
+    if (vkMeshVertexInputAttributeDescriptionCount > 0 && pVertexState->pMeshAttributes != NULL)
+    {
+        pMeshAttrCopy = tknMalloc(sizeof(TknVertexInputAttributeLayout) * vkMeshVertexInputAttributeDescriptionCount);
+        memcpy(pMeshAttrCopy, pVertexState->pMeshAttributes, sizeof(TknVertexInputAttributeLayout) * vkMeshVertexInputAttributeDescriptionCount);
+    }
+
+    if (vkInstanceVertexInputAttributeDescriptionCount > 0 && pVertexState->pInstanceAttributes != NULL)
+    {
+        pInstanceAttrCopy = tknMalloc(sizeof(TknVertexInputAttributeLayout) * vkInstanceVertexInputAttributeDescriptionCount);
+        memcpy(pInstanceAttrCopy, pVertexState->pInstanceAttributes, sizeof(TknVertexInputAttributeLayout) * vkInstanceVertexInputAttributeDescriptionCount);
+    }
 
     TknPipeline *pTknPipeline = tknMalloc(sizeof(TknPipeline));
     *pTknPipeline = (TknPipeline){
         .vkPipeline = vkPipeline,
         .vkPipelineLayout = vkPipelineLayout,
         .pTknPipelineBindingGroupLayout = pPipelineGroupLayout,
-        .tknVertexInputLayouts = {layouts[0], layouts[1]},
+        .tknMeshVertexInputLayout = {
+            .tknVertexBinding = TKN_VERTEX_BINDING_DESCRIPTION,
+            .tknVertexInputAttributeDescriptionCount = vkMeshVertexInputAttributeDescriptionCount,
+            .tknVertexInputAttributeDescriptions = pMeshAttrCopy,
+        },
+        .tknInstanceVertexInputLayout = {
+            .tknVertexBinding = TKN_INSTANCE_BINDING_DESCRIPTION,
+            .tknVertexInputAttributeDescriptionCount = vkInstanceVertexInputAttributeDescriptionCount,
+            .tknVertexInputAttributeDescriptions = pInstanceAttrCopy,
+        },
     };
     return pTknPipeline;
 }
@@ -202,7 +380,50 @@ void tknDestroyPipelinePtr(void *pTknGfxContext, void *pTknPipeline)
         pPipeline->pTknPipelineBindingGroupLayout = NULL;
     }
 
+    // Destroy cached vertex input attribute descriptions for both mesh and instance layouts
+    if (pPipeline->tknMeshVertexInputLayout.tknVertexInputAttributeDescriptions != NULL)
+    {
+        tknFree(pPipeline->tknMeshVertexInputLayout.tknVertexInputAttributeDescriptions);
+        pPipeline->tknMeshVertexInputLayout.tknVertexInputAttributeDescriptions = NULL;
+    }
+
+    if (pPipeline->tknInstanceVertexInputLayout.tknVertexInputAttributeDescriptions != NULL)
+    {
+        tknFree(pPipeline->tknInstanceVertexInputLayout.tknVertexInputAttributeDescriptions);
+        pPipeline->tknInstanceVertexInputLayout.tknVertexInputAttributeDescriptions = NULL;
+    }
+
     tknFree(pPipeline);
+}
+
+void tknSetViewport(void *pTknGfxContext, float x, float y, float width, float height, float minDepth, float maxDepth)
+{
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    uint32_t frameIndex = pGfxContext->frameCount % pGfxContext->swapchainImageCount;
+    VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[frameIndex];
+    
+    VkViewport viewport = {
+        .x = x,
+        .y = y,
+        .width = width,
+        .height = height,
+        .minDepth = minDepth,
+        .maxDepth = maxDepth,
+    };
+    vkCmdSetViewport(vkCommandBuffer, 0, 1, &viewport);
+}
+
+void tknSetScissor(void *pTknGfxContext, int32_t x, int32_t y, uint32_t width, uint32_t height)
+{
+    TknGfxContext *pGfxContext = (TknGfxContext *)pTknGfxContext;
+    uint32_t frameIndex = pGfxContext->frameCount % pGfxContext->swapchainImageCount;
+    VkCommandBuffer vkCommandBuffer = pGfxContext->vkGfxCommandBuffers[frameIndex];
+    
+    VkRect2D scissor = {
+        .offset = {x, y},
+        .extent = {width, height},
+    };
+    vkCmdSetScissor(vkCommandBuffer, 0, 1, &scissor);
 }
 
 void tknSetPipelinePtr(void *pTknGfxContext, void *pTknPipeline, void *pTknRenderPassBindingGroup, void *pTknPipelineBindingGroup)

@@ -1,5 +1,6 @@
 #include <vulkan/vulkan.h>
 #include "tknCore.h"
+#include "tknGfx.h"
 #include <spirv_reflect.h>
 #define TKN_ARRAY_COUNT(array) (NULL == array) ? 0 : (sizeof(array) / sizeof(array[0]))
 typedef enum
@@ -10,12 +11,7 @@ typedef enum
     TKN_MAX_DESCRIPTOR_SET,
 } TknTickernelDescriptorSet;
 
-typedef enum
-{
-    TKN_VERTEX_BINDING_DESCRIPTION = 0,
-    TKN_INSTANCE_BINDING_DESCRIPTION = 1,
-    TKN_MAX_VERTEX_BINDING_DESCRIPTION = 2,
-} TknVertexBinding;
+#define TKN_MAX_VERTEX_BINDING_DESCRIPTION 2
 
 typedef struct TknBuffer
 {
@@ -82,19 +78,14 @@ typedef struct TknBindingGroup
     void **tknBindingResourcePtrs;
 } TknBindingGroup;
 
-typedef struct TknVertexInputLayout
-{
-    TknVertexBinding tknVertexBinding;
-    uint32_t vkVertexInputAttributeDescriptionCount;
-    VkVertexInputAttributeDescription *vkVertexInputAttributeDescriptions;
-} TknVertexInputLayout;
-
 typedef struct TknPipeline
 {
     VkPipeline vkPipeline;
     VkPipelineLayout vkPipelineLayout;
     TknBindingGroupLayout *pTknPipelineBindingGroupLayout;
-    TknVertexInputLayout tknVertexInputLayouts[TKN_MAX_VERTEX_BINDING_DESCRIPTION];
+    
+    TknVertexInputLayout tknMeshVertexInputLayout;
+    TknVertexInputLayout tknInstanceVertexInputLayout;
 } TknPipeline;
 
 typedef struct TknGfxContext

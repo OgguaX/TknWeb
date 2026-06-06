@@ -4,6 +4,7 @@
 #include "tkn.h"
 #include "tknFont.h"
 #include <stdio.h>
+#include <string.h>
 
 // ============================================================================
 // Graphics Context Functions
@@ -412,58 +413,778 @@ static int luaUpdateBindingGroup(lua_State *L)
 }
 
 // ============================================================================
-// Pipeline Functions
+// Pipeline State Structure Parsing Helpers
 // ============================================================================
+// Note: These functions are only available when Vulkan headers are included
+// For WebGPU builds, the Vulkan pipeline creation functions are not available
+
+#ifdef VK_API_VERSION_1_3
+
+static VkPipelineInputAssemblyStateCreateInfo *luaExtractInputAssemblyState(lua_State *L, int tableIndex)
+{
+    if (!lua_istable(L, tableIndex))
+        return NULL;
+    
+    VkPipelineInputAssemblyStateCreateInfo *pState = tknMalloc(sizeof(VkPipelineInputAssemblyStateCreateInfo));
+    
+    lua_getfield(L, tableIndex, "sType");
+    pState->sType = (VkStructureType)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    pState->pNext = NULL;
+    
+    lua_getfield(L, tableIndex, "flags");
+    pState->flags = (VkPipelineInputAssemblyStateCreateFlags)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "topology");
+    pState->topology = (VkPrimitiveTopology)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "primitiveRestartEnable");
+    pState->primitiveRestartEnable = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    
+    return pState;
+}
+
+static VkPipelineViewportStateCreateInfo *luaExtractViewportState(lua_State *L, int tableIndex)
+{
+    if (!lua_istable(L, tableIndex))
+        return NULL;
+    
+    VkPipelineViewportStateCreateInfo *pState = tknMalloc(sizeof(VkPipelineViewportStateCreateInfo));
+    
+    lua_getfield(L, tableIndex, "sType");
+    pState->sType = (VkStructureType)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    pState->pNext = NULL;
+    
+    lua_getfield(L, tableIndex, "flags");
+    pState->flags = (VkPipelineViewportStateCreateFlags)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "viewportCount");
+    pState->viewportCount = (uint32_t)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    // Extract viewports table
+    VkViewport *pViewports = NULL;
+    if (pState->viewportCount > 0)
+    {
+        lua_getfield(L, tableIndex, "pViewports");
+        if (lua_istable(L, -1))
+        {
+            pViewports = tknMalloc(pState->viewportCount * sizeof(VkViewport));
+            for (uint32_t i = 0; i < pState->viewportCount; i++)
+            {
+                lua_geti(L, -1, i + 1);
+                if (lua_istable(L, -1))
+                {
+                    lua_getfield(L, -1, "x");
+                    pViewports[i].x = (float)lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "y");
+                    pViewports[i].y = (float)lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "width");
+                    pViewports[i].width = (float)lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "height");
+                    pViewports[i].height = (float)lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "minDepth");
+                    pViewports[i].minDepth = (float)lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "maxDepth");
+                    pViewports[i].maxDepth = (float)lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    pState->pViewports = pViewports;
+    
+    lua_getfield(L, tableIndex, "scissorCount");
+    pState->scissorCount = (uint32_t)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    // Extract scissors table
+    VkRect2D *pScissors = NULL;
+    if (pState->scissorCount > 0)
+    {
+        lua_getfield(L, tableIndex, "pScissors");
+        if (lua_istable(L, -1))
+        {
+            pScissors = tknMalloc(pState->scissorCount * sizeof(VkRect2D));
+            for (uint32_t i = 0; i < pState->scissorCount; i++)
+            {
+                lua_geti(L, -1, i + 1);
+                if (lua_istable(L, -1))
+                {
+                    lua_getfield(L, -1, "offsetX");
+                    pScissors[i].offset.x = (int32_t)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "offsetY");
+                    pScissors[i].offset.y = (int32_t)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "width");
+                    pScissors[i].extent.width = (uint32_t)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "height");
+                    pScissors[i].extent.height = (uint32_t)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    pState->pScissors = pScissors;
+    
+    return pState;
+}
+
+static VkPipelineRasterizationStateCreateInfo *luaExtractRasterizationState(lua_State *L, int tableIndex)
+{
+    if (!lua_istable(L, tableIndex))
+        return NULL;
+    
+    VkPipelineRasterizationStateCreateInfo *pState = tknMalloc(sizeof(VkPipelineRasterizationStateCreateInfo));
+    
+    lua_getfield(L, tableIndex, "sType");
+    pState->sType = (VkStructureType)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    pState->pNext = NULL;
+    
+    lua_getfield(L, tableIndex, "flags");
+    pState->flags = (VkPipelineRasterizationStateCreateFlags)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_pop(L, 1);
+    
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "polygonMode");
+    pState->polygonMode = (VkPolygonMode)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "cullMode");
+    pState->cullMode = (VkCullModeFlags)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "frontFace");
+    pState->frontFace = (VkFrontFace)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "depthBiasEnable");
+    pState->depthBiasEnable = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "depthBiasConstantFactor");
+    pState->depthBiasConstantFactor = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "depthBiasClamp");
+    pState->depthBiasClamp = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "depthBiasSlopeFactor");
+    pState->depthBiasSlopeFactor = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "lineWidth");
+    pState->lineWidth = (float)lua_tonumber(L, -1);
+    lua_pop(L, 1);
+    
+    return pState;
+}
+
+static VkPipelineMultisampleStateCreateInfo *luaExtractMultisampleState(lua_State *L, int tableIndex)
+{
+    if (!lua_istable(L, tableIndex))
+        return NULL;
+    
+    VkPipelineMultisampleStateCreateInfo *pState = tknMalloc(sizeof(VkPipelineMultisampleStateCreateInfo));
+    
+    lua_getfield(L, tableIndex, "sType");
+    pState->sType = (VkStructureType)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    pState->pNext = NULL;
+    
+    lua_getfield(L, tableIndex, "flags");
+    pState->flags = (VkPipelineMultisampleStateCreateFlags)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "rasterizationSamples");
+    pState->rasterizationSamples = (VkSampleCountFlagBits)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_pop(L, 1);
+    
+    lua_pop(L, 1);
+    
+    pState->pSampleMask = NULL;
+    
+    lua_getfield(L, tableIndex, "alphaToCoverageEnable");
+    pState->alphaToCoverageEnable = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    
+    lua_pop(L, 1);
+    
+    return pState;
+}
+
+static VkPipelineDepthStencilStateCreateInfo *luaExtractDepthStencilState(lua_State *L, int tableIndex)
+{
+    if (!lua_istable(L, tableIndex))
+        return NULL;
+    
+    VkPipelineDepthStencilStateCreateInfo *pState = tknMalloc(sizeof(VkPipelineDepthStencilStateCreateInfo));
+    
+    lua_getfield(L, tableIndex, "sType");
+    pState->sType = (VkStructureType)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    pState->pNext = NULL;
+    
+    lua_getfield(L, tableIndex, "flags");
+    pState->flags = (VkPipelineDepthStencilStateCreateFlags)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "depthTestEnable");
+    pState->depthTestEnable = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "depthWriteEnable");
+    pState->depthWriteEnable = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "depthCompareOp");
+    pState->depthCompareOp = (VkCompareOp)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "stencilTestEnable");
+    pState->stencilTestEnable = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    
+    // front and back are VkStencilOpState - set to defaults for now
+    memset(&pState->front, 0, sizeof(VkStencilOpState));
+    memset(&pState->back, 0, sizeof(VkStencilOpState));
+    
+    lua_pop(L, 1);
+    
+    lua_pop(L, 1);
+    
+    return pState;
+}
+
+static VkPipelineColorBlendStateCreateInfo *luaExtractColorBlendState(lua_State *L, int tableIndex)
+{
+    if (!lua_istable(L, tableIndex))
+        return NULL;
+    
+    VkPipelineColorBlendStateCreateInfo *pState = tknMalloc(sizeof(VkPipelineColorBlendStateCreateInfo));
+    
+    lua_getfield(L, tableIndex, "sType");
+    pState->sType = (VkStructureType)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    pState->pNext = NULL;
+    
+    lua_getfield(L, tableIndex, "flags");
+    pState->flags = (VkPipelineColorBlendStateCreateFlags)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "logicOpEnable");
+    pState->logicOpEnable = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "logicOp");
+    pState->logicOp = (VkLogicOp)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "attachmentCount");
+    pState->attachmentCount = (uint32_t)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    // Extract attachments array
+    VkPipelineColorBlendAttachmentState *pAttachments = NULL;
+    if (pState->attachmentCount > 0)
+    {
+        lua_getfield(L, tableIndex, "pAttachments");
+        if (lua_istable(L, -1))
+        {
+            pAttachments = tknMalloc(pState->attachmentCount * sizeof(VkPipelineColorBlendAttachmentState));
+            for (uint32_t i = 0; i < pState->attachmentCount; i++)
+            {
+                lua_geti(L, -1, i + 1);
+                if (lua_istable(L, -1))
+                {
+                    lua_getfield(L, -1, "blendEnable");
+                    pAttachments[i].blendEnable = lua_toboolean(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "srcColorBlendFactor");
+                    pAttachments[i].srcColorBlendFactor = (VkBlendFactor)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "dstColorBlendFactor");
+                    pAttachments[i].dstColorBlendFactor = (VkBlendFactor)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "colorBlendOp");
+                    pAttachments[i].colorBlendOp = (VkBlendOp)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "srcAlphaBlendFactor");
+                    pAttachments[i].srcAlphaBlendFactor = (VkBlendFactor)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "dstAlphaBlendFactor");
+                    pAttachments[i].dstAlphaBlendFactor = (VkBlendFactor)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "alphaBlendOp");
+                    pAttachments[i].alphaBlendOp = (VkBlendOp)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    
+                    lua_getfield(L, -1, "colorWriteMask");
+                    pAttachments[i].colorWriteMask = (VkColorComponentFlags)lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    pState->pAttachments = pAttachments;
+    
+    // Extract blend constants
+    lua_getfield(L, tableIndex, "blendConstants");
+    if (lua_istable(L, -1))
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            lua_geti(L, -1, i + 1);
+            pState->blendConstants[i] = (float)lua_tonumber(L, -1);
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
+    
+    return pState;
+}
+
+static VkPipelineDynamicStateCreateInfo *luaExtractDynamicState(lua_State *L, int tableIndex)
+{
+    if (!lua_istable(L, tableIndex))
+        return NULL;
+    
+    VkPipelineDynamicStateCreateInfo *pState = tknMalloc(sizeof(VkPipelineDynamicStateCreateInfo));
+    
+    lua_getfield(L, tableIndex, "sType");
+    pState->sType = (VkStructureType)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    pState->pNext = NULL;
+    
+    lua_getfield(L, tableIndex, "flags");
+    pState->flags = (VkPipelineDynamicStateCreateFlags)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    lua_getfield(L, tableIndex, "dynamicStateCount");
+    pState->dynamicStateCount = (uint32_t)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    
+    // Extract dynamic states array
+    VkDynamicState *pDynamicStates = NULL;
+    if (pState->dynamicStateCount > 0)
+    {
+        lua_getfield(L, tableIndex, "pDynamicStates");
+        if (lua_istable(L, -1))
+        {
+            pDynamicStates = tknMalloc(pState->dynamicStateCount * sizeof(VkDynamicState));
+            for (uint32_t i = 0; i < pState->dynamicStateCount; i++)
+            {
+                lua_geti(L, -1, i + 1);
+                pDynamicStates[i] = (VkDynamicState)lua_tointeger(L, -1);
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    pState->pDynamicStates = pDynamicStates;
+    
+    return pState;
+}
+// Note: binding is determined by parameter position (mesh=0, instance=1), not parsed from table
+static TknVertexInputAttributeLayout *luaExtractVertexInputAttributeDescriptions(lua_State *L, int tableIndex, uint32_t *pCount)
+{
+    if (!lua_istable(L, tableIndex))
+    {
+        *pCount = 0;
+        return NULL;
+    }
+    
+    uint32_t count = (uint32_t)lua_rawlen(L, tableIndex);
+    if (count == 0)
+    {
+        *pCount = 0;
+        return NULL;
+    }
+    
+    TknVertexInputAttributeLayout *descriptions = tknMalloc(count * sizeof(TknVertexInputAttributeLayout));
+    
+    for (uint32_t i = 0; i < count; i++)
+    {
+        lua_geti(L, tableIndex, i + 1);
+        if (!lua_istable(L, -1))
+        {
+            tknFree(descriptions);
+            *pCount = 0;
+            lua_pop(L, 1);
+            return NULL;
+        }
+        
+        // Extract fields: location, format, offset
+        lua_getfield(L, -1, "location");
+        descriptions[i].location = (uint32_t)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, -1, "format");
+        descriptions[i].format = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, -1, "offset");
+        descriptions[i].offset = (uint32_t)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_pop(L, 1); // Pop the attribute description table
+    }
+    
+    *pCount = count;
+    return descriptions;
+}
 
 static int luaCreatePipelinePtr(lua_State *L)
 {
     void *pGfxContext = lua_touserdata(L, 1);
-    uint32_t colorAttachmentCount = (uint32_t)luaL_checkinteger(L, 2);
-    
-    // Extract color attachment formats table
-    int *pColorAttachmentFormats = NULL;
-    if (lua_istable(L, 3) && colorAttachmentCount > 0)
-    {
-        pColorAttachmentFormats = tknMalloc(colorAttachmentCount * sizeof(int));
-        for (uint32_t i = 0; i < colorAttachmentCount; i++)
-        {
-            lua_geti(L, 3, i + 1);
-            pColorAttachmentFormats[i] = (int)lua_tointeger(L, -1);
-            lua_pop(L, 1);
-        }
-    }
-    
-    int depthAttachmentFormat = (int)luaL_checkinteger(L, 4);
-    void *pRenderPassBindingGroupLayout = lua_touserdata(L, 5);
-    uint32_t spvPathCount = (uint32_t)luaL_checkinteger(L, 6);
+    void *pRenderPassBindingGroupLayout = lua_touserdata(L, 2);
+    uint32_t spvPathCount = (uint32_t)luaL_checkinteger(L, 3);
     
     // Extract SPV paths table
     const char **spvPaths = NULL;
-    if (lua_istable(L, 7) && spvPathCount > 0)
+    if (lua_istable(L, 4) && spvPathCount > 0)
     {
         spvPaths = tknMalloc(spvPathCount * sizeof(const char *));
         for (uint32_t i = 0; i < spvPathCount; i++)
         {
-            lua_geti(L, 7, i + 1);
+            lua_geti(L, 4, i + 1);
             spvPaths[i] = lua_tostring(L, -1);
             lua_pop(L, 1);
         }
     }
     
-    void *pMeshVertexInputLayout = lua_touserdata(L, 8);
-    void *pInstanceVertexInputLayout = lua_touserdata(L, 9);
-    void *pVkPipelineInputAssemblyStateCreateInfo = lua_touserdata(L, 10);
-    void *pVkPipelineViewportStateCreateInfo = lua_touserdata(L, 11);
-    void *pVkPipelineRasterizationStateCreateInfo = lua_touserdata(L, 12);
-    void *pVkPipelineMultisampleStateCreateInfo = lua_touserdata(L, 13);
-    void *pVkPipelineDepthStencilStateCreateInfo = lua_touserdata(L, 14);
-    void *pVkPipelineColorBlendStateCreateInfo = lua_touserdata(L, 15);
-    void *pVkPipelineDynamicStateCreateInfo = lua_touserdata(L, 16);
+    // Extract mesh and instance vertex input attribute descriptions
+    uint32_t meshAttrCount = 0;
+    TknVertexInputAttributeLayout *pMeshAttrs = luaExtractVertexInputAttributeDescriptions(L, 5, &meshAttrCount);
     
-    void *pPipeline = tknCreatePipelinePtr(pGfxContext, colorAttachmentCount, pColorAttachmentFormats, depthAttachmentFormat, pRenderPassBindingGroupLayout, spvPathCount, spvPaths, pMeshVertexInputLayout, pInstanceVertexInputLayout, pVkPipelineInputAssemblyStateCreateInfo, pVkPipelineViewportStateCreateInfo, pVkPipelineRasterizationStateCreateInfo, pVkPipelineMultisampleStateCreateInfo, pVkPipelineDepthStencilStateCreateInfo, pVkPipelineColorBlendStateCreateInfo, pVkPipelineDynamicStateCreateInfo);
+    uint32_t instanceAttrCount = 0;
+    TknVertexInputAttributeLayout *pInstanceAttrs = luaExtractVertexInputAttributeDescriptions(L, 6, &instanceAttrCount);
     
-    tknFree(pColorAttachmentFormats);
+    // Build TknVertexState
+    TknVertexState vertexState = {
+        .meshAttributeCount = meshAttrCount,
+        .pMeshAttributes = pMeshAttrs,
+        .instanceAttributeCount = instanceAttrCount,
+        .pInstanceAttributes = pInstanceAttrs,
+    };
+    
+    // Build TknPrimitiveState from table at index 7
+    TknPrimitiveState primitiveState = {0};
+    if (lua_istable(L, 7))
+    {
+        lua_getfield(L, 7, "topology");
+        primitiveState.topology = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 7, "polygonMode");
+        primitiveState.polygonMode = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 7, "cullMode");
+        primitiveState.cullMode = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 7, "frontFace");
+        primitiveState.frontFace = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 7, "depthBiasEnable");
+        primitiveState.depthBiasEnable = (bool)lua_toboolean(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 7, "depthBiasConstantFactor");
+        primitiveState.depthBiasConstantFactor = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 7, "depthBiasClamp");
+        primitiveState.depthBiasClamp = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 7, "depthBiasSlopeFactor");
+        primitiveState.depthBiasSlopeFactor = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 7, "lineWidth");
+        primitiveState.lineWidth = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+    }
+    
+    // Build TknFragmentState from table at index 8
+    int *pColorAttachmentFormats = NULL;
+    uint32_t colorAttachmentCount = 0;
+    TknPipelineColorBlendState colorBlendState = {0};
+    
+    if (lua_istable(L, 8))
+    {
+        lua_getfield(L, 8, "colorAttachmentCount");
+        colorAttachmentCount = (uint32_t)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        // Extract color attachment formats
+        lua_getfield(L, 8, "pColorAttachmentFormats");
+        if (lua_istable(L, -1) && colorAttachmentCount > 0)
+        {
+            pColorAttachmentFormats = tknMalloc(colorAttachmentCount * sizeof(int));
+            for (uint32_t i = 0; i < colorAttachmentCount; i++)
+            {
+                lua_geti(L, -1, i + 1);
+                pColorAttachmentFormats[i] = (int)lua_tointeger(L, -1);
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+        
+        // Extract color blend state
+        lua_getfield(L, 8, "colorBlend");
+        if (lua_istable(L, -1))
+        {
+            lua_getfield(L, -1, "attachmentCount");
+            colorBlendState.attachmentCount = (uint32_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            // Extract blend attachments
+            lua_getfield(L, -1, "pAttachments");
+            if (lua_istable(L, -1) && colorBlendState.attachmentCount > 0)
+            {
+                colorBlendState.pAttachments = tknMalloc(colorBlendState.attachmentCount * sizeof(TknPipelineColorBlendAttachmentState));
+                for (uint32_t i = 0; i < colorBlendState.attachmentCount; i++)
+                {
+                    lua_geti(L, -1, i + 1);
+                    if (lua_istable(L, -1))
+                    {
+                        lua_getfield(L, -1, "blendEnable");
+                        colorBlendState.pAttachments[i].blendEnable = (bool)lua_toboolean(L, -1);
+                        lua_pop(L, 1);
+                        
+                        lua_getfield(L, -1, "srcColorBlendFactor");
+                        colorBlendState.pAttachments[i].srcColorBlendFactor = (int)lua_tointeger(L, -1);
+                        lua_pop(L, 1);
+                        
+                        lua_getfield(L, -1, "dstColorBlendFactor");
+                        colorBlendState.pAttachments[i].dstColorBlendFactor = (int)lua_tointeger(L, -1);
+                        lua_pop(L, 1);
+                        
+                        lua_getfield(L, -1, "colorBlendOp");
+                        colorBlendState.pAttachments[i].colorBlendOp = (int)lua_tointeger(L, -1);
+                        lua_pop(L, 1);
+                        
+                        lua_getfield(L, -1, "srcAlphaBlendFactor");
+                        colorBlendState.pAttachments[i].srcAlphaBlendFactor = (int)lua_tointeger(L, -1);
+                        lua_pop(L, 1);
+                        
+                        lua_getfield(L, -1, "dstAlphaBlendFactor");
+                        colorBlendState.pAttachments[i].dstAlphaBlendFactor = (int)lua_tointeger(L, -1);
+                        lua_pop(L, 1);
+                        
+                        lua_getfield(L, -1, "alphaBlendOp");
+                        colorBlendState.pAttachments[i].alphaBlendOp = (int)lua_tointeger(L, -1);
+                        lua_pop(L, 1);
+                        
+                        lua_getfield(L, -1, "colorWriteMask");
+                        colorBlendState.pAttachments[i].colorWriteMask = (int)lua_tointeger(L, -1);
+                        lua_pop(L, 1);
+                    }
+                    lua_pop(L, 1);
+                }
+            }
+            lua_pop(L, 1);
+            
+            // Extract blend constants
+            lua_getfield(L, -1, "blendConstants");
+            if (lua_istable(L, -1))
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    lua_geti(L, -1, i + 1);
+                    colorBlendState.blendConstants[i] = (float)lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                }
+            }
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+    }
+    
+    TknFragmentState fragmentState = {
+        .colorAttachmentCount = colorAttachmentCount,
+        .pColorAttachmentFormats = pColorAttachmentFormats,
+        .colorBlend = colorBlendState,
+    };
+    
+    // Build TknPipelineMultisampleState from table at index 9
+    TknPipelineMultisampleState multisampleState = {0};
+    if (lua_istable(L, 9))
+    {
+        lua_getfield(L, 9, "rasterizationSamples");
+        multisampleState.rasterizationSamples = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 9, "alphaToCoverageEnable");
+        multisampleState.alphaToCoverageEnable = (bool)lua_toboolean(L, -1);
+        lua_pop(L, 1);
+    }
+    
+    // Build TknPipelineDepthStencilState from table at index 10
+    TknPipelineDepthStencilState depthStencilState = {0};
+    if (lua_istable(L, 10))
+    {
+        lua_getfield(L, 10, "depthTestEnable");
+        depthStencilState.depthTestEnable = (bool)lua_toboolean(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 10, "depthWriteEnable");
+        depthStencilState.depthWriteEnable = (bool)lua_toboolean(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 10, "depthCompareOp");
+        depthStencilState.depthCompareOp = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        
+        lua_getfield(L, 10, "stencilTestEnable");
+        depthStencilState.stencilTestEnable = (bool)lua_toboolean(L, -1);
+        lua_pop(L, 1);
+        
+        // Extract front stencil op state
+        lua_getfield(L, 10, "front");
+        if (lua_istable(L, -1))
+        {
+            lua_getfield(L, -1, "failOp");
+            depthStencilState.front.failOp = (int)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "passOp");
+            depthStencilState.front.passOp = (int)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "depthFailOp");
+            depthStencilState.front.depthFailOp = (int)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "compareOp");
+            depthStencilState.front.compareOp = (int)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "compareMask");
+            depthStencilState.front.compareMask = (uint32_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "writeMask");
+            depthStencilState.front.writeMask = (uint32_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "reference");
+            depthStencilState.front.reference = (uint32_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+        
+        // Extract back stencil op state
+        lua_getfield(L, 10, "back");
+        if (lua_istable(L, -1))
+        {
+            lua_getfield(L, -1, "failOp");
+            depthStencilState.back.failOp = (int)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "passOp");
+            depthStencilState.back.passOp = (int)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "depthFailOp");
+            depthStencilState.back.depthFailOp = (int)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "compareOp");
+            depthStencilState.back.compareOp = (int)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "compareMask");
+            depthStencilState.back.compareMask = (uint32_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "writeMask");
+            depthStencilState.back.writeMask = (uint32_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            
+            lua_getfield(L, -1, "reference");
+            depthStencilState.back.reference = (uint32_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+    }
+    
+    // Extract depth attachment format from index 11
+    int depthAttachmentFormat = (int)luaL_checkinteger(L, 11);
+    
+    // Call the new C API with individual state parameters
+    void *pPipeline = tknCreatePipelinePtr(
+        pGfxContext,
+        pRenderPassBindingGroupLayout,
+        spvPathCount,
+        spvPaths,
+        &vertexState,
+        &primitiveState,
+        &fragmentState,
+        &multisampleState,
+        &depthStencilState,
+        depthAttachmentFormat
+    );
+    
+    // Cleanup
     tknFree(spvPaths);
+    tknFree(pMeshAttrs);
+    tknFree(pInstanceAttrs);
+    tknFree(pColorAttachmentFormats);
+    if (colorBlendState.pAttachments)
+        tknFree(colorBlendState.pAttachments);
     
     lua_pushlightuserdata(L, pPipeline);
     return 1;
@@ -476,6 +1197,8 @@ static int luaDestroyPipelinePtr(lua_State *L)
     tknDestroyPipelinePtr(pGfxContext, pPipeline);
     return 0;
 }
+
+#endif // VK_API_VERSION_1_3
 
 // ============================================================================
 // Command Buffer Functions
@@ -799,9 +1522,11 @@ void bindTknGfxFunctions(lua_State *pLuaState)
         {"tknDestroyBindingGroup", luaDestroyBindingGroup},
         {"tknUpdateBindingGroup", luaUpdateBindingGroup},
         
-        // Pipeline
+        // Pipeline (Vulkan only)
+#ifdef VK_API_VERSION_1_3
         {"tknCreatePipelinePtr", luaCreatePipelinePtr},
         {"tknDestroyPipelinePtr", luaDestroyPipelinePtr},
+#endif
         
         // Command Buffer
         {"tknBeginCommandBuffer", luaBeginCommandBuffer},
@@ -835,5 +1560,5 @@ void bindTknGfxFunctions(lua_State *pLuaState)
     };
     
     luaL_newlib(pLuaState, tknGfxRegs);
-    lua_setglobal(pLuaState, "tknGfx");
+    lua_setglobal(pLuaState, "tkn");
 }

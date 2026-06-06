@@ -1,642 +1,399 @@
--- Document not code!
--- This file provides type hints and documentation for the tkn module
--- Actual implementations are provided by C bindings
--- Initialize tkn table if not already loaded by C bindings
-local vulkan = require("vulkan")
-local tkn = _G.tkn
+-- Tickernel Lua API Documentation and Type Hints
+-- Actual implementations are provided by C bindings in tknGfxLua.c
+-- This file provides Lua IDE support and documentation
 
-tkn.defaultVkPipelineViewportStateCreateInfo = {
-    pViewports = {{
-        x = 0.0,
-        y = 0.0,
-        width = 1.0,
-        height = 1.0,
-        minDepth = 0.0,
-        maxDepth = 1.0,
-    }},
-    pScissors = {{
-        offset = {
-            x = 0,
-            y = 0,
-        },
-        extent = {
-            width = 0,
-            height = 0,
-        },
-    }},
-}
+-- ============================================================================
+-- Graphics Context Functions (tknGfx module)
+-- ============================================================================
 
-tkn.defaultVkPipelineMultisampleStateCreateInfo = {
-    rasterizationSamples = vulkan.VK_SAMPLE_COUNT_1_BIT,
-    sampleShadingEnable = false,
-    minSampleShading = 0,
-    pSampleMask = nil,
-    alphaToCoverageEnable = false,
-    alphaToOneEnable = false,
-}
+---Create a graphics context with device selection and shader compilation
+---@param extensionCount integer Number of Vulkan extensions
+---@param extensions table Array of Vulkan extension names (strings)
+---@param pSurface lightuserdata Native surface pointer
+---@param width integer Surface width in pixels
+---@param height integer Surface height in pixels
+---@param globalShaderPathCount integer Number of global shader paths
+---@param globalShaderPaths table Array of global shader paths
+---@return lightuserdata Graphics context pointer
+function tkn.tknCreateGfxContextPtr(extensionCount, extensions, pSurface, width, height, globalShaderPathCount, globalShaderPaths) end
 
-tkn.defaultVkPipelineDynamicStateCreateInfo = {
-    pDynamicStates = {vulkan.VK_DYNAMIC_STATE_VIEWPORT, vulkan.VK_DYNAMIC_STATE_SCISSOR},
-}
+---Destroy a graphics context
+---@param pGfxContext lightuserdata Graphics context pointer
+function tkn.tknDestroyGfxContextPtr(pGfxContext) end
 
-tkn.defaultVkPipelineRasterizationStateCreateInfo = {
-    depthClampEnable = false,
-    rasterizerDiscardEnable = false,
-    polygonMode = vulkan.VK_POLYGON_MODE_FILL,
-    cullMode = vulkan.VK_CULL_MODE_NONE,
-    frontFace = vulkan.VK_FRONT_FACE_COUNTER_CLOCKWISE,
-    depthBiasEnable = false,
-    depthBiasConstantFactor = 0.0,
-    depthBiasClamp = 0.0,
-    depthBiasSlopeFactor = 0.0,
-    lineWidth = 1.0,
-}
+-- ============================================================================
+-- Image Functions
+-- ============================================================================
 
-function tkn.rgbaToAbgr(rgba)
-    local r = (rgba >> 24) & 0xFF
-    local g = (rgba >> 16) & 0xFF
-    local b = (rgba >> 8) & 0xFF
-    local a = rgba & 0xFF
-    return (a << 24) | (b << 16) | (g << 8) | r
-end
+---Create a GPU image with specified properties
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param dimension integer Image dimension (1=1D, 2=2D, 3=3D)
+---@param format integer VkFormat enum value
+---@param mipLevelCount integer Number of mipmap levels
+---@param sampleCount integer Sample count for MSAA
+---@param width integer Image width in pixels
+---@param height integer Image height in pixels
+---@param depth integer Image depth in pixels (1 for 2D)
+---@param imageUsageFlags integer VkImageUsageFlags combination
+---@return lightuserdata TknImage pointer
+function tkn.tknCreateImagePtr(pGfxContext, dimension, format, mipLevelCount, sampleCount, width, height, depth, imageUsageFlags) end
 
-function tkn.tknCreateImagePtrWithPath(tknContext, path)
-    local astcFile = io.open(path, "rb")
-    if astcFile then
-        local content = astcFile:read("*all")
-        astcFile:close()
-        local pASTC, data, width, height, vkFormat, size = tkn.tknCreateASTCFromMemory(content)
-        if pASTC then
-            local vkExtent3D = {
-                width = width,
-                height = height,
-                depth = 1,
-            }
-            local pTknImage = tkn.tknCreateImagePtr(tknContext, vkExtent3D, vkFormat, vulkan.VK_IMAGE_TILING_OPTIMAL, vulkan.VK_IMAGE_USAGE_TEXTURE_BIT | vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT, vulkan.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vulkan.VK_IMAGE_ASPECT_COLOR_BIT, data)
-            tkn.tknDestroyASTCImage(pASTC)
-            return pTknImage, width, height
-        else
-            print("Failed to create ASTC image from file: " .. path)
-            return nil
-        end
-    else
-        print("Failed to open ASTC file: " .. path)
-        return nil
-    end
-end
+---Destroy a GPU image
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pImage lightuserdata TknImage pointer
+function tkn.tknDestroyImagePtr(pGfxContext, pImage) end
 
--- Creates a mesh with default zero-initialized vertex and index data
-function tkn.tknCreateDefaultMeshPtr(pTknGfxContext, format, pTknMeshVertexInputLayout, vertexCount, indexType, indexCount)
-    local vertices = {}
-    local indices = {}
+---Upload image data to GPU with explicit size (format-agnostic)
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pImage lightuserdata TknImage pointer
+---@param pData string Binary image data (e.g., ASTC, ETC2, uncompressed)
+---@param dataSize integer Size of image data in bytes
+---@param width integer Image width in pixels
+---@param height integer Image height in pixels
+---@param depth integer Image depth in pixels
+---@param mipLevel integer Target mipmap level
+---@param offsetX integer X offset in pixels
+---@param offsetY integer Y offset in pixels
+---@param offsetZ integer Z offset in pixels
+---@return boolean success True if upload succeeded
+---@return string error Error message if upload failed
+function tkn.tknWriteImagePtr(pGfxContext, pImage, pData, dataSize, width, height, depth, mipLevel, offsetX, offsetY, offsetZ) end
 
-    -- Initialize vertex data with zeros for each field
-    for i, fieldFormat in ipairs(format) do
-        local fieldData = {}
-        for j = 1, vertexCount * fieldFormat.count do
-            table.insert(fieldData, 0)
-        end
-        vertices[fieldFormat.name] = fieldData
-    end
+---Create an image view for sampling
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param baseLayer integer Base layer index
+---@param layerCount integer Number of layers
+---@param aspectFlags integer VkImageAspectFlags (e.g., VK_IMAGE_ASPECT_COLOR_BIT)
+---@param baseMipLevel integer Base mipmap level
+---@param mipLevelCount integer Number of mipmap levels
+---@param dimension integer Image view dimension
+---@param format integer VkFormat enum value
+---@param pImage lightuserdata TknImage pointer
+---@return lightuserdata TknImageView pointer
+function tkn.tknCreateImageView(pGfxContext, baseLayer, layerCount, aspectFlags, baseMipLevel, mipLevelCount, dimension, format, pImage) end
 
-    -- Initialize indices with zeros (0-based for C compatibility)
-    for i = 1, indexCount do
-        table.insert(indices, 0)
-    end
+---Destroy an image view
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pImageView lightuserdata TknImageView pointer
+function tkn.tknDestroyImageView(pGfxContext, pImageView) end
 
-    return tkn.tknCreateMeshPtrWithData(pTknGfxContext, pTknMeshVertexInputLayout, format, vertices, indexType, indices)
-end
+-- ============================================================================
+-- Buffer Functions
+-- ============================================================================
 
--- Type constants (Lua style naming)
+---Create a GPU buffer with optional initial data
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param size integer Buffer size in bytes
+---@param usage integer VkBufferUsageFlags combination
+---@param mappedAtCreation boolean Whether buffer should be host-mappable
+---@param pData string Binary buffer data or nil
+---@return lightuserdata TknBuffer pointer
+function tkn.tknCreateBufferPtr(pGfxContext, size, usage, mappedAtCreation, pData) end
+
+---Destroy a GPU buffer
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pBuffer lightuserdata TknBuffer pointer
+function tkn.tknDestroyBufferPtr(pGfxContext, pBuffer) end
+
+---Update buffer data
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pBuffer lightuserdata TknBuffer pointer
+---@param offset integer Offset in bytes
+---@param size integer Size of data to write
+---@param pData string Binary data or nil
+function tkn.tknUpdateBuffer(pGfxContext, pBuffer, offset, size, pData) end
+
+---Create a uniform buffer descriptor
+---@param pBuffer lightuserdata TknBuffer pointer
+---@param offset integer Offset in bytes
+---@param range integer Size of uniform data in bytes
+---@return lightuserdata TknUniformBuffer pointer
+function tkn.tknCreateUniformBuffer(pBuffer, offset, range) end
+
+---Destroy a uniform buffer descriptor
+---@param pUniformBuffer lightuserdata TknUniformBuffer pointer
+function tkn.tknDestroyUniformBuffer(pUniformBuffer) end
+
+-- ============================================================================
+-- Sampler Functions
+-- ============================================================================
+
+---Create a sampler for texture filtering and addressing
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param magFilter integer VkFilter (NEAREST or LINEAR)
+---@param minFilter integer VkFilter (NEAREST or LINEAR)
+---@param mipmapMode integer VkSamplerMipmapMode (NEAREST or LINEAR)
+---@param addressModeU integer VkSamplerAddressMode
+---@param addressModeV integer VkSamplerAddressMode
+---@param addressModeW integer VkSamplerAddressMode
+---@param mipLodBias number Mipmap LOD bias
+---@param anisotropyEnable boolean Enable anisotropic filtering
+---@param maxAnisotropy number Maximum anisotropy level
+---@param compareEnable boolean Enable comparison
+---@param compareOp integer VkCompareOp
+---@param minLod number Minimum LOD
+---@param maxLod number Maximum LOD
+---@param borderColor integer VkBorderColor
+---@param unnormalizedCoordinates boolean Use unnormalized texture coordinates
+---@return lightuserdata TknSampler pointer
+function tkn.tknCreateSampler(pGfxContext, magFilter, minFilter, mipmapMode, addressModeU, addressModeV, addressModeW, mipLodBias, anisotropyEnable, maxAnisotropy, compareEnable, compareOp, minLod, maxLod, borderColor, unnormalizedCoordinates) end
+
+---Destroy a sampler
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pSampler lightuserdata TknSampler pointer
+function tkn.tknDestroySampler(pGfxContext, pSampler) end
+
+-- ============================================================================
+-- Binding Group Functions (Descriptor Sets)
+-- ============================================================================
+
+---Create a binding group layout from shader reflection
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param shaderPathCount integer Number of shader paths
+---@param shaderPaths table Array of compiled shader paths (SPIR-V)
+---@param set integer Descriptor set index
+---@return lightuserdata TknBindingGroupLayout pointer
+function tkn.tknCreateBindingGroupLayout(pGfxContext, shaderPathCount, shaderPaths, set) end
+
+---Destroy a binding group layout
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pLayout lightuserdata TknBindingGroupLayout pointer
+function tkn.tknDestroyBindingGroupLayout(pGfxContext, pLayout) end
+
+---Create a binding group (descriptor set) instance
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pLayout lightuserdata TknBindingGroupLayout pointer
+---@param resourceCount integer Number of resources (buffers/images/samplers)
+---@param resourcePtrs table Array of resource pointers (TknBuffer, TknImageView, TknSampler, TknUniformBuffer)
+---@return lightuserdata TknBindingGroup pointer
+function tkn.tknCreateBindingGroup(pGfxContext, pLayout, resourceCount, resourcePtrs) end
+
+---Destroy a binding group
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pBindingGroup lightuserdata TknBindingGroup pointer
+function tkn.tknDestroyBindingGroup(pGfxContext, pBindingGroup) end
+
+---Update binding group resource bindings
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pBindingGroup lightuserdata TknBindingGroup pointer
+---@param resourceCount integer Number of resources to update
+---@param indices table Array of binding indices
+---@param resourcePtrs table Array of new resource pointers
+function tkn.tknUpdateBindingGroup(pGfxContext, pBindingGroup, resourceCount, indices, resourcePtrs) end
+
+-- ============================================================================
+-- Pipeline Functions
+-- ============================================================================
+
+---Create a graphics rendering pipeline
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param colorAttachmentCount integer Number of color attachments
+---@param pColorAttachmentFormats table Array of VkFormat values
+---@param depthAttachmentFormat integer VkFormat for depth attachment
+---@param pRenderPassBindingGroupLayout lightuserdata TknBindingGroupLayout pointer
+---@param spvPathCount integer Number of shader paths
+---@param spvPaths table Array of compiled shader paths (SPIR-V)
+---@param pMeshVertexInputLayout lightuserdata TknVertexInputLayout or nil
+---@param pInstanceVertexInputLayout lightuserdata TknVertexInputLayout or nil
+---@param pVkPipelineInputAssemblyStateCreateInfo lightuserdata VkPipelineInputAssemblyStateCreateInfo pointer
+---@param pVkPipelineViewportStateCreateInfo lightuserdata VkPipelineViewportStateCreateInfo pointer
+---@param pVkPipelineRasterizationStateCreateInfo lightuserdata VkPipelineRasterizationStateCreateInfo pointer
+---@param pVkPipelineMultisampleStateCreateInfo lightuserdata VkPipelineMultisampleStateCreateInfo pointer
+---@param pVkPipelineDepthStencilStateCreateInfo lightuserdata VkPipelineDepthStencilStateCreateInfo pointer
+---@param pVkPipelineColorBlendStateCreateInfo lightuserdata VkPipelineColorBlendStateCreateInfo pointer
+---@param pVkPipelineDynamicStateCreateInfo lightuserdata VkPipelineDynamicStateCreateInfo pointer
+---@return lightuserdata TknPipeline pointer
+function tkn.tknCreatePipelinePtr(pGfxContext, colorAttachmentCount, pColorAttachmentFormats, depthAttachmentFormat, pRenderPassBindingGroupLayout, spvPathCount, spvPaths, pMeshVertexInputLayout, pInstanceVertexInputLayout, pVkPipelineInputAssemblyStateCreateInfo, pVkPipelineViewportStateCreateInfo, pVkPipelineRasterizationStateCreateInfo, pVkPipelineMultisampleStateCreateInfo, pVkPipelineDepthStencilStateCreateInfo, pVkPipelineColorBlendStateCreateInfo, pVkPipelineDynamicStateCreateInfo) end
+
+---Destroy a graphics pipeline
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pPipeline lightuserdata TknPipeline pointer
+function tkn.tknDestroyPipelinePtr(pGfxContext, pPipeline) end
+
+-- ============================================================================
+-- Command Buffer Functions
+-- ============================================================================
+
+---Begin recording render commands
+---@param pGfxContext lightuserdata Graphics context pointer
+function tkn.tknBeginCommandBuffer(pGfxContext) end
+
+---End recording render commands and submit to GPU
+---@param pGfxContext lightuserdata Graphics context pointer
+function tkn.tknEndCommandBuffer(pGfxContext) end
+
+-- ============================================================================
+-- Render Pass Functions
+-- ============================================================================
+
+---Begin a render pass with attachments
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param colorAttachmentCount integer Number of color attachments
+---@param colorImageViewPtrs table Array of TknImageView pointers for color attachments
+---@param loadOps table Array of VkAttachmentLoadOp values
+---@param storeOps table Array of VkAttachmentStoreOp values
+---@param colorClearValues table 2D array of clear values (RGBA) for each color attachment
+---@param pDepthImageView lightuserdata TknImageView pointer for depth attachment or nil
+---@param depthLoadOp integer VkAttachmentLoadOp
+---@param depthStoreOp integer VkAttachmentStoreOp
+---@param depthClearValue number Clear value for depth
+---@param stencilClearValue integer Clear value for stencil
+---@param width integer Render pass width
+---@param height integer Render pass height
+function tkn.tknBeginRenderPass(pGfxContext, colorAttachmentCount, colorImageViewPtrs, loadOps, storeOps, colorClearValues, pDepthImageView, depthLoadOp, depthStoreOp, depthClearValue, stencilClearValue, width, height) end
+
+---End current render pass
+---@param pGfxContext lightuserdata Graphics context pointer
+function tkn.tknEndRenderPass(pGfxContext) end
+
+-- ============================================================================
+-- Pipeline Binding Functions
+-- ============================================================================
+
+---Set the active pipeline and descriptor sets
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pPipeline lightuserdata TknPipeline pointer
+---@param pRenderPassBindingGroup lightuserdata TknBindingGroup pointer for render pass descriptors
+---@param pPipelineBindingGroup lightuserdata TknBindingGroup pointer for pipeline-specific descriptors
+function tkn.tknSetPipelinePtr(pGfxContext, pPipeline, pRenderPassBindingGroup, pPipelineBindingGroup) end
+
+-- ============================================================================
+-- Buffer Binding Functions
+-- ============================================================================
+
+---Bind a buffer as vertex data
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pBuffer lightuserdata TknBuffer pointer
+---@param offset integer Offset in bytes
+function tkn.tknBindVertexBuffer(pGfxContext, pBuffer, offset) end
+
+---Bind a buffer as instance data
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pBuffer lightuserdata TknBuffer pointer
+---@param offset integer Offset in bytes
+function tkn.tknBindInstanceBuffer(pGfxContext, pBuffer, offset) end
+
+---Bind a buffer as index data
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param pBuffer lightuserdata TknBuffer pointer
+---@param indexType integer VkIndexType (UINT16 or UINT32)
+---@param offset integer Offset in bytes
+function tkn.tknBindIndexBuffer(pGfxContext, pBuffer, indexType, offset) end
+
+-- ============================================================================
+-- Draw Functions
+-- ============================================================================
+
+---Record a non-indexed draw call
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param vertexCount integer Number of vertices to draw
+---@param instanceCount integer Number of instances
+---@param firstVertex integer Index of first vertex
+---@param firstInstance integer Index of first instance
+function tkn.tknDraw(pGfxContext, vertexCount, instanceCount, firstVertex, firstInstance) end
+
+---Record an indexed draw call
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param indexCount integer Number of indices to draw
+---@param instanceCount integer Number of instances
+---@param firstIndex integer Offset into index buffer
+---@param baseVertex integer Base vertex offset
+---@param firstInstance integer Index of first instance
+function tkn.tknDrawIndexed(pGfxContext, indexCount, instanceCount, firstIndex, baseVertex, firstInstance) end
+
+-- ============================================================================
+-- Font Functions
+-- ============================================================================
+
+---Create a font library instance
+---@return lightuserdata TknFontLibrary pointer
+function tkn.tknCreateTknFontLibraryPtr() end
+
+---Destroy a font library
+---@param pTknFontLibrary lightuserdata TknFontLibrary pointer
+---@param pGfxContext lightuserdata Graphics context pointer
+function tkn.tknDestroyTknFontLibraryPtr(pTknFontLibrary, pGfxContext) end
+
+---Create a font from one or more font files
+---@param pTknFontLibrary lightuserdata TknFontLibrary pointer
+---@param pGfxContext lightuserdata Graphics context pointer
+---@param fontPathCount integer Number of font files
+---@param fontPaths table Array of font file paths (strings)
+---@param fontSize integer Font size in pixels
+---@param atlasLength integer Atlas texture size (width and height)
+---@param boldStrengths table Array of bold strengths (FT_Pos, 26.6 format) or nil for no bold
+---@return lightuserdata TknFont pointer
+function tkn.tknCreateTknFontPtr(pTknFontLibrary, pGfxContext, fontPathCount, fontPaths, fontSize, atlasLength, boldStrengths) end
+
+---Destroy a font
+---@param pTknFontLibrary lightuserdata TknFontLibrary pointer
+---@param pTknFont lightuserdata TknFont pointer
+---@param pGfxContext lightuserdata Graphics context pointer
+function tkn.tknDestroyTknFontPtr(pTknFontLibrary, pTknFont, pGfxContext) end
+
+---Load a character into font atlas
+---@param pTknFont lightuserdata TknFont pointer
+---@param unicode integer Unicode codepoint
+---@return lightuserdata TknChar pointer
+---@return boolean hasLoaded True if character was newly loaded
+function tkn.tknLoadTknChar(pTknFont, unicode) end
+
+---Flush dirty characters to GPU
+---@param pTknFont lightuserdata TknFont pointer
+---@param pGfxContext lightuserdata Graphics context pointer
+function tkn.tknFlushTknFontPtr(pTknFont, pGfxContext) end
+
+-- ============================================================================
+-- Tickernel Context Functions (tkn module)
+-- ============================================================================
+
+---Create Tickernel context integrating graphics and Lua
+---@param assetsPath string Path to assets directory (for shaders and Lua scripts)
+---@param luaLibraryCount integer Number of Lua libraries to register
+---@param luaLibraries table Array of {name, functions} Lua library definitions
+---@param extensionCount integer Number of Vulkan extensions
+---@param extensions table Array of extension names
+---@param pSurface lightuserdata Native surface pointer
+---@param width integer Window width
+---@param height integer Window height
+---@return lightuserdata TknContext pointer
+function tknCreateContextPtr(assetsPath, luaLibraryCount, luaLibraries, extensionCount, extensions, pSurface, width, height) end
+
+---Destroy Tickernel context
+---@param pTknContext lightuserdata TknContext pointer
+function tknDestroyContextPtr(pTknContext) end
+
+---Update Tickernel context (call each frame)
+---@param pTknContext lightuserdata TknContext pointer
+---@param width integer Window width
+---@param height integer Window height
+---@param keyCodeStateCount integer Number of key states
+---@param keyCodeStates table Array of InputState values for keys
+---@param mouseCodeStateCount integer Number of mouse states
+---@param mouseCodeStates table Array of InputState values for mouse buttons
+---@param scrollingDeltaX number Horizontal scroll delta
+---@param scrollingDeltaY number Vertical scroll delta
+---@param mousePositionNDCX number Mouse X in NDC (-1 to 1)
+---@param mousePositionNDCY number Mouse Y in NDC (-1 to 1)
+---@param inputText string Unicode input text
+---@param pShouldQuit table Reference to boolean: set to true to quit
+---@param pImeEnabled table Reference to boolean: IME enabled state
+function tknUpdateContext(pTknContext, width, height, keyCodeStateCount, keyCodeStates, mouseCodeStateCount, mouseCodeStates, scrollingDeltaX, scrollingDeltaY, mousePositionNDCX, mousePositionNDCY, inputText, pShouldQuit, pImeEnabled) end
+
+-- ============================================================================
+-- Constants and Type Definitions
+-- ============================================================================
+
+-- Input state values
+local INPUT_STATE_PRESSED = 0
+local INPUT_STATE_RELEASED = 1
+local INPUT_STATE_REPEAT = 2
+
+-- Vertex format type constants
+tkn = tkn or {}
 tkn.type = {
-    uint8 = 0,
-    uint16 = 1,
-    uint32 = 2,
-    uint64 = 3,
-    int8 = 4,
-    int16 = 5,
-    int32 = 6,
-    int64 = 7,
-    float = 8,
-    double = 9,
+    uint8 = 0, uint16 = 1, uint32 = 2, uint64 = 3,
+    int8 = 4, int16 = 5, int32 = 6, int64 = 7,
+    float = 8, double = 9,
 }
 
--- Function declarations for IDE support (only used if C binding not available)
-if not tkn.tknGetSupportedFormat then
-    ---Find first supported image format from candidates list
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param candidates table List of VkFormat candidates to test
-    ---@param tiling integer VkImageTiling mode (LINEAR or OPTIMAL)
-    ---@param features integer Required VkFormatFeatureFlags
-    ---@return integer Supported VkFormat, or vulkan.VK_FORMAT_UNDEFINED if none match
-    function tkn.tknGetSupportedFormat(pTknGfxContext, candidates, tiling, features)
-        error("tkn.tknGetSupportedFormat: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateDynamicAttachmentPtr then
-    ---Create a dynamically-scaled render attachment
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param vkFormat integer VkFormat for the attachment
-    ---@param vkImageUsageFlags integer Usage flags (e.g., vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-    ---@param vkImageAspectFlags integer Aspect flags (e.g., vulkan.VK_IMAGE_ASPECT_COLOR_BIT)
-    ---@param scaler number Scale factor (0.0-1.0) relative to swapchain size
-    ---@return lightuserdata TknAttachment pointer
-    function tkn.tknCreateDynamicAttachmentPtr(pTknGfxContext, vkFormat, vkImageUsageFlags, vkImageAspectFlags, scaler)
-        error("tkn.tknCreateDynamicAttachmentPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyDynamicAttachmentPtr then
-    ---Destroy a dynamic render attachment
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pAttachment lightuserdata TknAttachment pointer
-    function tkn.tknDestroyDynamicAttachmentPtr(pTknGfxContext, pAttachment)
-        error("tkn.tknDestroyDynamicAttachmentPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknGetSwapchainAttachmentPtr then
-    ---Get the swapchain attachment (presentation surface)
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@return lightuserdata TknAttachment pointer (swapchain)
-    function tkn.tknGetSwapchainAttachmentPtr(pTknGfxContext)
-        error("tkn.tknGetSwapchainAttachmentPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateVertexInputLayoutPtr then
-    ---Create a vertex input layout from field descriptions
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param format table Array of {name, type, count} field descriptors
-    ---@return lightuserdata TknVertexInputLayout pointer
-    function tkn.tknCreateVertexInputLayoutPtr(pTknGfxContext, format)
-        error("tkn.tknCreateVertexInputLayoutPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyVertexInputLayoutPtr then
-    ---Destroy a vertex input layout
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pLayout lightuserdata TknVertexInputLayout pointer
-    function tkn.tknDestroyVertexInputLayoutPtr(pTknGfxContext, pLayout)
-        error("tkn.tknDestroyVertexInputLayoutPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateRenderPassPtr then
-    ---Create a render pass with multiple attachments and subpasses
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param vkAttachmentDescriptions table Array of VkAttachmentDescription
-    ---@param inputAttachmentPtrs table Array of TknAttachment pointers
-    ---@param vkClearValues table Array of VkClearValue for each attachment
-    ---@param vkSubpassDescriptions table Array of VkSubpassDescription
-    ---@param spvPathsArray table 2D array of shader paths for each subpass
-    ---@param vkSubpassDependencies table Array of VkSubpassDependency for synchronization
-    ---@param renderPassIndex integer Index for this render pass
-    ---@return lightuserdata TknRenderPass pointer
-    function tkn.tknCreateRenderPassPtr(pTknGfxContext, vkAttachmentDescriptions, inputAttachmentPtrs, vkClearValues, vkSubpassDescriptions, spvPathsArray, vkSubpassDependencies, renderPassIndex)
-        error("tkn.tknCreateRenderPassPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyRenderPassPtr then
-    ---Destroy a render pass and all associated pipelines
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknRenderPass lightuserdata TknRenderPass pointer
-    function tkn.tknDestroyRenderPassPtr(pTknGfxContext, pTknRenderPass)
-        error("tkn.tknDestroyRenderPassPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreatePipelinePtr then
-    ---Create a graphics pipeline for a specific subpass
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknRenderPass lightuserdata TknRenderPass pointer
-    ---@param subpassIndex integer Target subpass index within the render pass
-    ---@param spvPaths table Array of compiled shader paths (vertex, fragment, etc.)
-    ---@param pTknMeshVertexInputLayout lightuserdata Mesh vertex layout or nil
-    ---@param pInstanceVertexInputLayout lightuserdata Instance vertex layout or nil
-    ---@param vkPipelineInputAssemblyStateCreateInfo table Input assembly state (topology, etc.)
-    ---@param vkPipelineViewportStateCreateInfo table Viewport/scissor state
-    ---@param vkPipelineRasterizationStateCreateInfo table Rasterization state
-    ---@param vkPipelineMultisampleStateCreateInfo table Multisample state
-    ---@param vkPipelineDepthStencilStateCreateInfo table Depth/stencil state
-    ---@param vkPipelineColorBlendStateCreateInfo table Color blend state
-    ---@param vkPipelineDynamicStateCreateInfo table Dynamic states (viewport, scissor, etc.)
-    ---@return lightuserdata TknPipeline pointer
-    function tkn.tknCreatePipelinePtr(pTknGfxContext, pTknRenderPass, subpassIndex, spvPaths, pTknMeshVertexInputLayout, pInstanceVertexInputLayout, vkPipelineInputAssemblyStateCreateInfo, vkPipelineViewportStateCreateInfo, vkPipelineRasterizationStateCreateInfo, vkPipelineMultisampleStateCreateInfo, vkPipelineDepthStencilStateCreateInfo, vkPipelineColorBlendStateCreateInfo, vkPipelineDynamicStateCreateInfo)
-        error("tkn.tknCreatePipelinePtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyPipelinePtr then
-    ---Destroy a graphics pipeline
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknPipeline lightuserdata TknPipeline pointer
-    function tkn.tknDestroyPipelinePtr(pTknGfxContext, pTknPipeline)
-        error("tkn.tknDestroyPipelinePtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateDrawCallPtr then
-    ---Create a draw call combining pipeline, material, mesh, and instance data
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknPipeline lightuserdata TknPipeline pointer
-    ---@param pTknMaterial lightuserdata TknMaterial pointer
-    ---@param pTknMesh lightuserdata TknMesh pointer or nil
-    ---@param pTknInstance lightuserdata TknInstance pointer or nil
-    ---@return lightuserdata TknDrawCall pointer
-    function tkn.tknCreateDrawCallPtr(pTknGfxContext, pTknPipeline, pTknMaterial, pTknMesh, pTknInstance)
-        error("tkn.tknCreateDrawCallPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyDrawCallPtr then
-    ---Destroy a draw call
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknDrawCall lightuserdata TknDrawCall pointer
-    function tkn.tknDestroyDrawCallPtr(pTknGfxContext, pTknDrawCall)
-        error("tkn.tknDestroyDrawCallPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateUniformBufferPtr then
-    ---Create a uniform buffer with initial data
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param format table Field layout descriptors
-    ---@param buffer table Data table with named arrays
-    ---@return lightuserdata TknUniformBuffer pointer
-    function tkn.tknCreateUniformBufferPtr(pTknGfxContext, format, buffer)
-        error("tkn.tknCreateUniformBufferPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyUniformBufferPtr then
-    ---Destroy a uniform buffer
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknUniformBuffer lightuserdata TknUniformBuffer pointer
-    function tkn.tknDestroyUniformBufferPtr(pTknGfxContext, pTknUniformBuffer)
-        error("tkn.tknDestroyUniformBufferPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknUpdateUniformBufferPtr then
-    ---Update contents of a uniform buffer
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknUniformBuffer lightuserdata TknUniformBuffer pointer
-    ---@param format table Field layout descriptors (must be before buffer)
-    ---@param buffer table Data table with named arrays
-    ---@param size integer Optional override size, or nil for auto-calculated
-    ---@note Parameter order is: (pTknGfxContext, pTknUniformBuffer, format, buffer, size)
-    function tkn.tknUpdateUniformBufferPtr(pTknGfxContext, pTknUniformBuffer, format, buffer, size)
-        error("tkn.tknUpdateUniformBufferPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateInstancePtr then
-    ---Create instance data with vertex attributes
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknVertexInputLayout lightuserdata TknVertexInputLayout pointer
-    ---@param format table Field layout descriptors
-    ---@param instances table Data table with named arrays
-    ---@return lightuserdata TknInstance pointer
-    function tkn.tknCreateInstancePtr(pTknGfxContext, pTknVertexInputLayout, format, instances)
-        error("tkn.tknCreateInstancePtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknUpdateInstancePtr then
-    ---Update instance data with vertex attributes
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknInstance lightuserdata TknInstance pointer
-    ---@param format table Field layout descriptors
-    ---@param instances table Data table with named arrays
-    function tkn.tknUpdateInstancePtr(pTknGfxContext, pTknInstance, format, instances)
-        error("tkn.tknUpdateInstancePtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyInstancePtr then
-    ---Destroy instance data
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknInstance lightuserdata TknInstance pointer
-    function tkn.tknDestroyInstancePtr(pTknGfxContext, pTknInstance)
-        error("tkn.tknDestroyInstancePtr: C binding not loaded")
-    end
-end
-
-
-
-if not tkn.tknCreateMeshPtrWithData then
-    ---Create a mesh with vertex and index data
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknMeshVertexInputLayout lightuserdata TknVertexInputLayout pointer
-    ---@param format table Field layout descriptors
-    ---@param vertices table Data table with named vertex arrays
-    ---@param indexType integer VkIndexType (UINT16 or UINT32)
-    ---@param indices table Index array or nil for non-indexed geometry
-    ---@return lightuserdata TknMesh pointer
-    function tkn.tknCreateMeshPtrWithData(pTknGfxContext, pTknMeshVertexInputLayout, format, vertices, indexType, indices)
-        error("tkn.tknCreateMeshPtrWithData: C binding not loaded")
-    end
-end
-
-if not tkn.tknUpdateMeshPtr then
-    ---Update mesh vertex and index data
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknMesh lightuserdata TknMesh pointer
-    ---@param format string Format string for data layout
-    ---@param vertices table Vertex data
-    ---@param indexType integer VkIndexType (UINT16 or UINT32)
-    ---@param indices table Index array or nil
-    function tkn.tknUpdateMeshPtr(pTknGfxContext, pTknMesh, format, vertices, indexType, indices)
-        error("tkn.tknUpdateMeshPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyMeshPtr then
-    ---Destroy a mesh
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknMesh lightuserdata TknMesh pointer
-    function tkn.tknDestroyMeshPtr(pTknGfxContext, pTknMesh)
-        error("tkn.tknDestroyMeshPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknGetGlobalMaterialPtr then
-    ---Get the global material descriptor set
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@return lightuserdata TknMaterial pointer (global descriptor set)
-    function tkn.tknGetGlobalMaterialPtr(pTknGfxContext)
-        error("tkn.tknGetGlobalMaterialPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknGetSubpassMaterialPtr then
-    ---Get the subpass-level material descriptor set
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknRenderPass lightuserdata TknRenderPass pointer
-    ---@param subpassIndex integer Target subpass index
-    ---@return lightuserdata TknMaterial pointer (subpass descriptor set)
-    function tkn.tknGetSubpassMaterialPtr(pTknGfxContext, pTknRenderPass, subpassIndex)
-        error("tkn.tknGetSubpassMaterialPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreatePipelineMaterialPtr then
-    ---Create a pipeline-specific material descriptor set
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknPipeline lightuserdata TknPipeline pointer
-    ---@return lightuserdata TknMaterial pointer (pipeline-specific descriptor set)
-    function tkn.tknCreatePipelineMaterialPtr(pTknGfxContext, pTknPipeline)
-        error("tkn.tknCreatePipelineMaterialPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyPipelineMaterialPtr then
-    ---Destroy a pipeline-specific material descriptor set
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknMaterial lightuserdata TknMaterial pointer
-    function tkn.tknDestroyPipelineMaterialPtr(pTknGfxContext, pTknMaterial)
-        error("tkn.tknDestroyPipelineMaterialPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknUpdateMaterialPtr then
-    ---Update material descriptor bindings
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknMaterial lightuserdata TknMaterial pointer
-    ---@param inputBindings table Input bindings with buffer/image/sampler pointers
-    function tkn.tknUpdateMaterialPtr(pTknGfxContext, pTknMaterial, inputBindings)
-        error("tkn.tknUpdateMaterialPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateImagePtr then
-    ---Create a VkImage with specified properties
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param vkExtent3D table Image dimensions {width, height, depth}
-    ---@param vkFormat integer VkFormat enum value
-    ---@param vkImageTiling integer VkImageTiling (LINEAR or OPTIMAL)
-    ---@param vkImageUsageFlags integer VkImageUsageFlags combination
-    ---@param vkMemoryPropertyFlags integer VkMemoryPropertyFlags combination
-    ---@param vkImageAspectFlags integer VkImageAspectFlags (COLOR, DEPTH, STENCIL)
-    ---@param data lightuserdata Raw image data pointer or nil
-    ---@return lightuserdata TknImage pointer
-    function tkn.tknCreateImagePtr(pTknGfxContext, vkExtent3D, vkFormat, vkImageTiling, vkImageUsageFlags, vkMemoryPropertyFlags, vkImageAspectFlags, data)
-        error("tkn.tknCreateImagePtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyImagePtr then
-    ---Destroy a VkImage
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknImage lightuserdata TknImage pointer
-    function tkn.tknDestroyImagePtr(pTknGfxContext, pTknImage)
-        error("tkn.tknDestroyImagePtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateASTCFromMemory then
-    ---Load ASTC compressed image from memory buffer
-    ---@param buffer lightuserdata Pointer to ASTC data
-    ---@param size integer Size of buffer in bytes
-    ---@return table ASTC image structure with width/height/data
-    function tkn.tknCreateASTCFromMemory(buffer, size)
-        error("tkn.tknCreateASTCFromMemory: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyASTCImage then
-    ---Destroy ASTC image structure
-    ---@param astcImage table ASTC image structure
-    function tkn.tknDestroyASTCImage(astcImage)
-        error("tkn.tknDestroyASTCImage: C binding not loaded")
-    end
-end
-
--- Sampler creation convenience functions
-if not tkn.tknCreateSamplerPtr then
-    ---Create a VkSampler with specified filtering and addressing modes
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param magFilter integer VkFilter (NEAREST or LINEAR)
-    ---@param minFilter integer VkFilter (NEAREST or LINEAR)
-    ---@param mipmapMode integer VkSamplerMipmapMode (NEAREST or LINEAR)
-    ---@param addressModeU integer VkSamplerAddressMode (REPEAT, MIRRORED_REPEAT, CLAMP_TO_EDGE, etc)
-    ---@param addressModeV integer VkSamplerAddressMode
-    ---@param addressModeW integer VkSamplerAddressMode
-    ---@param mipLodBias number Mipmap LOD bias
-    ---@param anisotropyEnable boolean Enable anisotropic filtering
-    ---@param maxAnisotropy number Maximum anisotropy level
-    ---@param minLod number Minimum LOD
-    ---@param maxLod number Maximum LOD
-    ---@param borderColor integer VkBorderColor
-    ---@return lightuserdata TknSampler pointer
-    function tkn.tknCreateSamplerPtr(pTknGfxContext, magFilter, minFilter, mipmapMode, addressModeU, addressModeV, addressModeW, mipLodBias, anisotropyEnable, maxAnisotropy, minLod, maxLod, borderColor)
-        error("tkn.tknCreateSamplerPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroySamplerPtr then
-    ---Destroy a VkSampler
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknSampler lightuserdata TknSampler pointer
-    function tkn.tknDestroySamplerPtr(pTknGfxContext, pTknSampler)
-        error("tkn.tknDestroySamplerPtr: C binding not loaded")
-    end
-end
-
--- Font library functions
-if not tkn.tknCreateTknFontLibraryPtr then
-    ---Create a font library instance
-    ---@return lightuserdata TknFontLibrary pointer
-    function tkn.tknCreateTknFontLibraryPtr()
-        error("tkn.tknCreateTknFontLibraryPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyTknFontLibraryPtr then
-    ---Destroy a font library instance
-    ---@param pTknFontLibrary lightuserdata TknFontLibrary pointer
-    function tkn.tknDestroyTknFontLibraryPtr(pTknFontLibrary)
-        error("tkn.tknDestroyTknFontLibraryPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknCreateTknFontPtr then
-    ---Create a font from one or more font files
-    ---@param pTknFontLibrary lightuserdata TknFontLibrary pointer
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param fontPaths table Array of font file paths (string)
-    ---@param fontSize integer Font size in pixels
-    ---@param atlasLength integer Size of text atlas
-    ---@param boldStrengths? table Array of bold strengths in 26.6 format (0 = no bold)
-    ---@return lightuserdata TknFont pointer
-    ---@return lightuserdata pTknImage
-    ---@return integer maxAscender (unified across all fonts)
-    ---@return integer minDescender (unified across all fonts)
-    function tkn.tknCreateTknFontPtr(pTknFontLibrary, pTknGfxContext, fontPaths, fontSize, atlasLength, boldStrengths)
-        error("tkn.tknCreateTknFontPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknDestroyTknFontPtr then
-    ---Destroy a font and associated resources
-    ---@param pTknFontLibrary lightuserdata TknFontLibrary pointer
-    ---@param pTknFont lightuserdata TknFont pointer
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    function tkn.tknDestroyTknFontPtr(pTknFontLibrary, pTknFont, pTknGfxContext)
-        error("tkn.tknDestroyTknFontPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknFlushTknFontPtr then
-    ---Flush pending font atlas updates to GPU
-    ---@param pTknFont lightuserdata TknFont pointer
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    function tkn.tknFlushTknFontPtr(pTknFont, pTknGfxContext)
-        error("tkn.tknFlushTknFontPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknLoadChar then
-    ---Load a character into font atlas
-    ---@param pTknFont lightuserdata TknFont pointer
-    ---@param unicode integer Unicode codepoint to load
-    function tkn.tknLoadChar(pTknFont, unicode)
-        error("tkn.tknLoadChar: C binding not loaded")
-    end
-end
-
-if not tkn.tknWaitRenderFence then
-    ---Wait for GPU render fence before modifying GPU resources
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    function tkn.tknWaitRenderFence(pTknGfxContext)
-        error("tkn.tknWaitRenderFence: C binding not loaded")
-    end
-end
-
-if not tkn.tknBeginRenderPassPtr then
-    ---Begin a render pass
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknFrame lightuserdata Frame pointer
-    ---@param pTknRenderPass lightuserdata RenderPass pointer
-    function tkn.tknBeginRenderPassPtr(pTknGfxContext, pTknFrame, pTknRenderPass)
-        error("tkn.tknBeginRenderPassPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknEndRenderPassPtr then
-    ---End current render pass
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknFrame lightuserdata Frame pointer
-    function tkn.tknEndRenderPassPtr(pTknGfxContext, pTknFrame)
-        error("tkn.tknEndRenderPassPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknNextSubpassPtr then
-    ---Move to next subpass in current render pass
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknFrame lightuserdata Frame pointer
-    function tkn.tknNextSubpassPtr(pTknGfxContext, pTknFrame)
-        error("tkn.tknNextSubpassPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknRecordDrawCallPtr then
-    ---Record a draw call with pipeline binding and draw commands
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknFrame lightuserdata Frame pointer
-    ---@param pTknDrawCall lightuserdata DrawCall pointer
-    function tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, pTknDrawCall)
-        error("tkn.tknRecordDrawCallPtr: C binding not loaded")
-    end
-end
-
-if not tkn.tknSetStencilCompareMask then
-    ---Set stencil compare mask for a frame
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknFrame lightuserdata Frame pointer
-    ---@param faceMask integer VkStencilFaceFlags (e.g., vulkan.VK_STENCIL_FACE_FRONT_AND_BACK)
-    ---@param compareMask integer Compare mask value
-    function tkn.tknSetStencilCompareMask(pTknGfxContext, pTknFrame, faceMask, compareMask)
-        error("tkn.tknSetStencilCompareMask: C binding not loaded")
-    end
-end
-
-if not tkn.tknSetStencilWriteMask then
-    ---Set stencil write mask for a frame
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknFrame lightuserdata Frame pointer
-    ---@param faceMask integer VkStencilFaceFlags (e.g., vulkan.VK_STENCIL_FACE_FRONT_AND_BACK)
-    ---@param writeMask integer Write mask value
-    function tkn.tknSetStencilWriteMask(pTknGfxContext, pTknFrame, faceMask, writeMask)
-        error("tkn.tknSetStencilWriteMask: C binding not loaded")
-    end
-end
-
-if not tkn.tknSetStencilReference then
-    ---Set stencil reference value for a frame
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknFrame lightuserdata Frame pointer
-    ---@param faceMask integer VkStencilFaceFlags (e.g., vulkan.VK_STENCIL_FACE_FRONT_AND_BACK)
-    ---@param reference integer Reference value
-    function tkn.tknSetStencilReference(pTknGfxContext, pTknFrame, faceMask, reference)
-        error("tkn.tknSetStencilReference: C binding not loaded")
-    end
-end
-
-if not tkn.tknClearAttachments then
-    ---Clear attachments in a render pass
-    ---@param pTknGfxContext lightuserdata Graphics context pointer
-    ---@param pTknFrame lightuserdata Frame pointer
-    ---@param clearAttachments table Array of VkClearAttachment
-    ---@param clearRects table Array of VkClearRect
-    function tkn.tknClearAttachments(pTknGfxContext, pTknFrame, clearAttachments, clearRects)
-        error("tkn.tknClearAttachments: C binding not loaded")
-    end
-end
-
-return tkn

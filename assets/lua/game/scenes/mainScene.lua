@@ -24,12 +24,12 @@ function mainScene.updateGfx(game, pTknGfxContext, width, height)
 end
 
 function mainScene.recordFrame(game, pTknGfxContext, pTknFrame)
-    for _, char in ipairs(characterSystem.characters) do
-        tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, char.body.pTknDrawCall)
-    end
-    if characterSystem.mask then
-        tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, characterSystem.mask.pTknDrawCall)
-    end
+    -- TODO: Implement new low-level rendering API calls
+    -- In new API, would bind vertex buffer, instance buffer, and call tknDraw/tknDrawIndexed
+    -- for _, char in ipairs(characterSystem.characters) do
+    --     tkn.tknBindVertexBuffer(pTknGfxContext, char.body.pVertexBuffer, 0)
+    --     tkn.tknDraw(pTknGfxContext, char.body.vertexCount, 1, 0, 0)
+    -- end
 end
 
 return mainScene

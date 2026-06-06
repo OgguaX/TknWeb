@@ -26,29 +26,11 @@ function gameScene.updateGfx(game, pTknGfxContext, width, height)
 end
 
 function gameScene.recordFrame(game, pTknGfxContext, pTknFrame)
-    if gameScene.map then
-        -- Record ground mesh
-        if gameScene.map.pTknDrawCall then
-            tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, gameScene.map.pTknDrawCall)
-        end
-
-        -- Record structures
-        if gameScene.map.structureMap then
-            for structureType, pTknDrawCall in pairs(gameScene.map.structureMap.typeToPDrawCall) do
-                if pTknDrawCall then
-                    tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, pTknDrawCall)
-                end
-            end
-        end
-    end
-
-    -- Record characters
-    for _, char in ipairs(characterSystem.characters) do
-        tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, char.body.pTknDrawCall)
-    end
-    if characterSystem.mask then
-        tkn.tknRecordDrawCallPtr(pTknGfxContext, pTknFrame, characterSystem.mask.pTknDrawCall)
-    end
+    -- TODO: Implement new low-level rendering API calls
+    -- In new API, would bind vertex buffer, instance buffer, and call tknDraw/tknDrawIndexed
+    -- if gameScene.map then
+    --     tkn.tknBindVertexBuffer(pTknGfxContext, gameScene.map.pVertexBuffer, 0)\n    --     tkn.tknDraw(pTknGfxContext, gameScene.map.vertexCount, 1, 0, 0)
+    -- end
 end
 
 return gameScene
