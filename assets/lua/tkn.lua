@@ -3,23 +3,52 @@
 -- This file provides Lua IDE support and documentation
 
 -- ============================================================================
--- Graphics Context Functions (tknGfx module)
+-- Tickernel Constants
 -- ============================================================================
 
----Create a graphics context with device selection and shader compilation
----@param extensionCount integer Number of Vulkan extensions
----@param extensions table Array of Vulkan extension names (strings)
----@param pSurface lightuserdata Native surface pointer
----@param width integer Surface width in pixels
----@param height integer Surface height in pixels
----@param globalShaderPathCount integer Number of global shader paths
----@param globalShaderPaths table Array of global shader paths
----@return lightuserdata Graphics context pointer
-function tkn.tknCreateGfxContextPtr(extensionCount, extensions, pSurface, width, height, globalShaderPathCount, globalShaderPaths) end
+--- Vertex binding enum for vertex input layouts
+tkn.TKN_VERTEX_BINDING_DESCRIPTION = 0
 
----Destroy a graphics context
----@param pGfxContext lightuserdata Graphics context pointer
-function tkn.tknDestroyGfxContextPtr(pGfxContext) end
+--- Instance binding enum for vertex input layouts
+tkn.TKN_INSTANCE_BINDING_DESCRIPTION = 1
+
+-- ============================================================================
+-- Vertex Input Layout Structures
+-- ============================================================================
+-- Lua representation of C structures for vertex and instance input layouts
+-- 
+-- C Structure (TknVertexInputLayout):
+--   struct TknVertexInputLayout {
+--       uint32_t binding;  // TKN_VERTEX_BINDING_DESCRIPTION (0) or TKN_INSTANCE_BINDING_DESCRIPTION (1)
+--       uint32_t attributeCount;
+--       TknVertexInputAttributeLayout[] attributes;  // Array of attributes
+--   }
+--
+--   struct TknVertexInputAttributeLayout {
+--       uint32_t location;    // Shader input location
+--       int format;           // VkFormat enum (e.g., VK_FORMAT_R32_SFLOAT)
+--       uint32_t offset;      // Offset in bytes within vertex/instance struct
+--   }
+--
+-- Lua Table Format:
+--   vertexLayout = {
+--       binding = vulkan.TKN_VERTEX_BINDING_DESCRIPTION,  -- or 0
+--       {location = 0, format = vulkan.VK_FORMAT_R32_SFLOAT, offset = 0},     -- position (8 bytes)
+--       {location = 1, format = vulkan.VK_FORMAT_R32_SFLOAT, offset = 8},     -- texCoord
+--   }
+--   
+--   instanceLayout = {
+--       binding = vulkan.TKN_INSTANCE_BINDING_DESCRIPTION,  -- or 1
+--       {location = 2, format = vulkan.VK_FORMAT_R32G32B32_SFLOAT, offset = 0},  -- position (12 bytes)
+--       {location = 3, format = vulkan.VK_FORMAT_R32_UINT, offset = 12},         -- color
+--   }
+-- 
+-- Notes:
+--   - binding must be either TKN_VERTEX_BINDING_DESCRIPTION or TKN_INSTANCE_BINDING_DESCRIPTION
+--   - location values must be unique across all attributes
+--   - format must be a VkFormat constant (see vulkan.lua)
+--   - offset is in bytes and must account for all previous attributes
+--   - Vertex layouts typically use binding 0, instance layouts use binding 1
 
 -- ============================================================================
 -- Image Functions
@@ -149,11 +178,10 @@ function tkn.tknDestroySampler(pGfxContext, pSampler) end
 
 ---Create a binding group layout from shader reflection
 ---@param pGfxContext lightuserdata Graphics context pointer
----@param shaderPathCount integer Number of shader paths
 ---@param shaderPaths table Array of compiled shader paths (SPIR-V)
 ---@param set integer Descriptor set index
 ---@return lightuserdata TknBindingGroupLayout pointer
-function tkn.tknCreateBindingGroupLayout(pGfxContext, shaderPathCount, shaderPaths, set) end
+function tkn.tknCreateBindingGroupLayout(pGfxContext, shaderPaths, set) end
 
 ---Destroy a binding group layout
 ---@param pGfxContext lightuserdata Graphics context pointer
@@ -163,10 +191,9 @@ function tkn.tknDestroyBindingGroupLayout(pGfxContext, pLayout) end
 ---Create a binding group (descriptor set) instance
 ---@param pGfxContext lightuserdata Graphics context pointer
 ---@param pLayout lightuserdata TknBindingGroupLayout pointer
----@param resourceCount integer Number of resources (buffers/images/samplers)
 ---@param resourcePtrs table Array of resource pointers (TknBuffer, TknImageView, TknSampler, TknUniformBuffer)
 ---@return lightuserdata TknBindingGroup pointer
-function tkn.tknCreateBindingGroup(pGfxContext, pLayout, resourceCount, resourcePtrs) end
+function tkn.tknCreateBindingGroup(pGfxContext, pLayout, resourcePtrs) end
 
 ---Destroy a binding group
 ---@param pGfxContext lightuserdata Graphics context pointer
@@ -176,10 +203,9 @@ function tkn.tknDestroyBindingGroup(pGfxContext, pBindingGroup) end
 ---Update binding group resource bindings
 ---@param pGfxContext lightuserdata Graphics context pointer
 ---@param pBindingGroup lightuserdata TknBindingGroup pointer
----@param resourceCount integer Number of resources to update
 ---@param indices table Array of binding indices
 ---@param resourcePtrs table Array of new resource pointers
-function tkn.tknUpdateBindingGroup(pGfxContext, pBindingGroup, resourceCount, indices, resourcePtrs) end
+function tkn.tknUpdateBindingGroup(pGfxContext, pBindingGroup, indices, resourcePtrs) end
 
 -- ============================================================================
 -- Pipeline Functions
@@ -187,23 +213,17 @@ function tkn.tknUpdateBindingGroup(pGfxContext, pBindingGroup, resourceCount, in
 
 ---Create a graphics rendering pipeline
 ---@param pGfxContext lightuserdata Graphics context pointer
----@param colorAttachmentCount integer Number of color attachments
----@param pColorAttachmentFormats table Array of VkFormat values
----@param depthAttachmentFormat integer VkFormat for depth attachment
 ---@param pRenderPassBindingGroupLayout lightuserdata TknBindingGroupLayout pointer
----@param spvPathCount integer Number of shader paths
 ---@param spvPaths table Array of compiled shader paths (SPIR-V)
----@param pMeshVertexInputLayout lightuserdata TknVertexInputLayout or nil
----@param pInstanceVertexInputLayout lightuserdata TknVertexInputLayout or nil
----@param pVkPipelineInputAssemblyStateCreateInfo lightuserdata VkPipelineInputAssemblyStateCreateInfo pointer
----@param pVkPipelineViewportStateCreateInfo lightuserdata VkPipelineViewportStateCreateInfo pointer
----@param pVkPipelineRasterizationStateCreateInfo lightuserdata VkPipelineRasterizationStateCreateInfo pointer
----@param pVkPipelineMultisampleStateCreateInfo lightuserdata VkPipelineMultisampleStateCreateInfo pointer
----@param pVkPipelineDepthStencilStateCreateInfo lightuserdata VkPipelineDepthStencilStateCreateInfo pointer
----@param pVkPipelineColorBlendStateCreateInfo lightuserdata VkPipelineColorBlendStateCreateInfo pointer
----@param pVkPipelineDynamicStateCreateInfo lightuserdata VkPipelineDynamicStateCreateInfo pointer
+---@param pMeshVertexInputLayout table Mesh vertex attributes array ({location, format, offset})
+---@param pInstanceVertexInputLayout table Instance vertex attributes array ({location, format, offset})
+---@param primitiveState table Primitive state ({topology, polygonMode, cullMode, frontFace, depthBiasEnable, depthBiasConstantFactor, depthBiasClamp, depthBiasSlopeFactor, lineWidth})
+---@param fragmentState table Fragment state ({pColorAttachmentFormats, colorBlend={attachments, blendConstants}})
+---@param multisampleState table Multisample state ({rasterizationSamples, alphaToCoverageEnable})
+---@param depthStencilState table Depth/stencil state ({depthTestEnable, depthWriteEnable, depthCompareOp, stencilTestEnable, front, back})
+---@param depthAttachmentFormat integer VkFormat for depth attachment
 ---@return lightuserdata TknPipeline pointer
-function tkn.tknCreatePipelinePtr(pGfxContext, colorAttachmentCount, pColorAttachmentFormats, depthAttachmentFormat, pRenderPassBindingGroupLayout, spvPathCount, spvPaths, pMeshVertexInputLayout, pInstanceVertexInputLayout, pVkPipelineInputAssemblyStateCreateInfo, pVkPipelineViewportStateCreateInfo, pVkPipelineRasterizationStateCreateInfo, pVkPipelineMultisampleStateCreateInfo, pVkPipelineDepthStencilStateCreateInfo, pVkPipelineColorBlendStateCreateInfo, pVkPipelineDynamicStateCreateInfo) end
+function tkn.tknCreatePipelinePtr(pGfxContext, pRenderPassBindingGroupLayout, spvPaths, pMeshVertexInputLayout, pInstanceVertexInputLayout, primitiveState, fragmentState, multisampleState, depthStencilState, depthAttachmentFormat) end
 
 ---Destroy a graphics pipeline
 ---@param pGfxContext lightuserdata Graphics context pointer
@@ -216,7 +236,7 @@ function tkn.tknDestroyPipelinePtr(pGfxContext, pPipeline) end
 
 ---Begin recording render commands
 ---@param pGfxContext lightuserdata Graphics context pointer
-function tkn.tknBeginCommandBuffer(pGfxContext) end
+function tkn.tknBeginCommandBuffer(pGfxContext, width, height) end
 
 ---End recording render commands and submit to GPU
 ---@param pGfxContext lightuserdata Graphics context pointer
@@ -228,7 +248,6 @@ function tkn.tknEndCommandBuffer(pGfxContext) end
 
 ---Begin a render pass with attachments
 ---@param pGfxContext lightuserdata Graphics context pointer
----@param colorAttachmentCount integer Number of color attachments
 ---@param colorImageViewPtrs table Array of TknImageView pointers for color attachments
 ---@param loadOps table Array of VkAttachmentLoadOp values
 ---@param storeOps table Array of VkAttachmentStoreOp values
@@ -240,7 +259,7 @@ function tkn.tknEndCommandBuffer(pGfxContext) end
 ---@param stencilClearValue integer Clear value for stencil
 ---@param width integer Render pass width
 ---@param height integer Render pass height
-function tkn.tknBeginRenderPass(pGfxContext, colorAttachmentCount, colorImageViewPtrs, loadOps, storeOps, colorClearValues, pDepthImageView, depthLoadOp, depthStoreOp, depthClearValue, stencilClearValue, width, height) end
+function tkn.tknBeginRenderPass(pGfxContext, colorImageViewPtrs, loadOps, storeOps, colorClearValues, pDepthImageView, depthLoadOp, depthStoreOp, depthClearValue, stencilClearValue, width, height) end
 
 ---End current render pass
 ---@param pGfxContext lightuserdata Graphics context pointer
@@ -380,20 +399,8 @@ function tknDestroyContextPtr(pTknContext) end
 ---@param pImeEnabled table Reference to boolean: IME enabled state
 function tknUpdateContext(pTknContext, width, height, keyCodeStateCount, keyCodeStates, mouseCodeStateCount, mouseCodeStates, scrollingDeltaX, scrollingDeltaY, mousePositionNDCX, mousePositionNDCY, inputText, pShouldQuit, pImeEnabled) end
 
--- ============================================================================
--- Constants and Type Definitions
--- ============================================================================
-
--- Input state values
-local INPUT_STATE_PRESSED = 0
-local INPUT_STATE_RELEASED = 1
-local INPUT_STATE_REPEAT = 2
 
 -- Vertex format type constants
 tkn = tkn or {}
-tkn.type = {
-    uint8 = 0, uint16 = 1, uint32 = 2, uint64 = 3,
-    int8 = 4, int16 = 5, int32 = 6, int64 = 7,
-    float = 8, double = 9,
-}
 
+return tkn

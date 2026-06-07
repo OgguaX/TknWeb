@@ -1,4 +1,5 @@
 #include "tkn.h"
+#include "tknGfx.h"
 #include <vulkan/vulkan.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H

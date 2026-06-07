@@ -2,27 +2,52 @@ local vulkan = require("vulkan")
 local tkn = require("tkn")
 local textPipeline = {}
 
-function textPipeline.createPipelinePtr(pTknGfxContext, vertexFormat, instanceFormat, assetsPath)
+function textPipeline.createPipelinePtr(pTknGfxContext, meshVertexInputLayout, instanceVertexInputLayout, assetsPath)
     local textPipelineSpvPaths = {assetsPath .. "/shaders/ui.vert.spv", assetsPath .. "/shaders/text.frag.spv"}
-    
-    -- Create with new low-level API signature (16 parameters):
-    return tkn.tknCreatePipelinePtr(
-        pTknGfxContext,
-        1,  -- colorAttachmentCount
-        {vulkan.VK_FORMAT_B8G8R8A8_UNORM},  -- pColorAttachmentFormats
-        vulkan.VK_FORMAT_D32_SFLOAT,  -- depthAttachmentFormat
-        nil,  -- pRenderPassBindingGroupLayout
-        2,  -- spvPathCount
-        textPipelineSpvPaths,  -- spvPaths
-        nil,  -- pMeshVertexInputLayout
-        nil,  -- pInstanceVertexInputLayout
-        nil,  -- pVkPipelineInputAssemblyStateCreateInfo
-        nil,  -- pVkPipelineViewportStateCreateInfo
-        nil,  -- pVkPipelineRasterizationStateCreateInfo
-        nil,  -- pVkPipelineMultisampleStateCreateInfo
-        nil,  -- pVkPipelineDepthStencilStateCreateInfo
-        nil,  -- pVkPipelineColorBlendStateCreateInfo
-        nil  -- pVkPipelineDynamicStateCreateInfo
+
+    return tkn.tknCreatePipelinePtr(pTknGfxContext, nil, textPipelineSpvPaths, meshVertexInputLayout, instanceVertexInputLayout, {
+        topology = vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        polygonMode = vulkan.VK_POLYGON_MODE_FILL,
+        cullMode = vulkan.VK_CULL_MODE_BACK_BIT,
+        frontFace = vulkan.VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        depthBiasEnable = false,
+        depthBiasConstantFactor = 0.0,
+        depthBiasClamp = 0.0,
+        depthBiasSlopeFactor = 0.0,
+        lineWidth = 1.0,
+    }, {
+        pColorAttachmentFormats = {vulkan.VK_FORMAT_B8G8R8A8_UNORM},
+        colorBlend = {
+            attachments = {},
+            blendConstants = {0.0, 0.0, 0.0, 0.0},
+        },
+    }, {
+        rasterizationSamples = vulkan.VK_SAMPLE_COUNT_1_BIT,
+        alphaToCoverageEnable = false,
+    }, {
+        depthTestEnable = true,
+        depthWriteEnable = true,
+        depthCompareOp = vulkan.VK_COMPARE_OP_LESS,
+        stencilTestEnable = false,
+        front = {
+            failOp = 0,
+            passOp = 0,
+            depthFailOp = 0,
+            compareOp = 0,
+            compareMask = 0,
+            writeMask = 0,
+            reference = 0,
+        },
+        back = {
+            failOp = 0,
+            passOp = 0,
+            depthFailOp = 0,
+            compareOp = 0,
+            compareMask = 0,
+            writeMask = 0,
+            reference = 0,
+        },
+    }, vulkan.VK_FORMAT_D32_SFLOAT -- depthAttachmentFormat
     )
 end
 

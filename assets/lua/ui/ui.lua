@@ -189,9 +189,9 @@ local function updateNodeGfxRecursively(pTknGfxContext, ui, node, screenWidth, s
 
     local screenSizeDirty = screenWidth ~= ui.screenWidth or screenHeight ~= ui.screenHeight
     if node.type == "imageNode" then
-        imageNode.updateMeshPtr(pTknGfxContext, node, ui.vertexFormat, screenWidth, screenHeight, boundsDirty, screenSizeDirty)
+        imageNode.updateMeshPtr(pTknGfxContext, node, ui.meshVertexInputLayout, screenWidth, screenHeight, boundsDirty, screenSizeDirty)
     elseif node.type == "textNode" then
-        textNode.updateMeshPtr(pTknGfxContext, node, ui.vertexFormat, screenWidth, screenHeight, boundsDirty, screenSizeDirty)
+        textNode.updateMeshPtr(pTknGfxContext, node, ui.meshVertexInputLayout, screenWidth, screenHeight, boundsDirty, screenSizeDirty)
     end
 
     -- TODO Mark dirty for alphaThreshold and node's color
@@ -395,7 +395,7 @@ local function removeNodeInternal(pTknGfxContext, node)
     node.transform = nil
 end
 
-function ui.setup(pTknGfxContext, pSwapchainAttachment, pDepthStencilAttachment, assetsPath, renderPassIndex)
+function ui.setup(pTknGfxContext, assetsPath, renderPassIndex)
     ui.layoutType = {
         anchored = "anchored",
         relative = "relative",
@@ -410,33 +410,30 @@ function ui.setup(pTknGfxContext, pSwapchainAttachment, pDepthStencilAttachment,
         textNode = "textNode",
         interactableNode = "interactableNode",
     }
-    -- Vertex format: position + uv (no color)
-    ui.vertexFormat = {{
-        name = "position",
-        type = tkn.type.float,
-        count = 2,
-    }, {
-        name = "uv",
-        type = tkn.type.float,
-        count = 2,
-    }}
 
-    -- Instance format: mat3 (9 floats) + color (uint32)
-    ui.instanceFormat = {{
-        name = "model",
-        type = tkn.type.float,
-        count = 9, -- 3x3 matrix
-    }, {
-        name = "color",
-        type = tkn.type.uint32,
-        count = 1,
-    }, {
-        name = "alphaThreshold",
-        type = tkn.type.float,
-        count = 1,
-    }}
+    -- Vertex input layout for mesh (binding 0)
+    -- position: 2x R32_SFLOAT = 8 bytes, offset 0
+    -- uv:       2x R32_SFLOAT = 8 bytes, offset 8
+    ui.meshVertexInputLayout = {
+        binding = tkn.TKN_VERTEX_BINDING_DESCRIPTION,
+        {location = 0, format = vulkan.VK_FORMAT_R32G32_SFLOAT, offset = 0},
+        {location = 1, format = vulkan.VK_FORMAT_R32G32_SFLOAT, offset = 8},
+    }
 
-    uiRenderPass.setup(pTknGfxContext, pSwapchainAttachment, pDepthStencilAttachment, assetsPath, ui.vertexFormat, ui.instanceFormat, renderPassIndex)
+    -- Instance input layout (binding 1)
+    -- model:           9x R32_SFLOAT = 36 bytes, offset 0 (as 3x 4-element vectors)
+    -- color:           1x R32_UINT   = 4 bytes, offset 36
+    -- alphaThreshold:  1x R32_SFLOAT = 4 bytes, offset 40
+    ui.instanceVertexInputLayout = {
+        binding = tkn.TKN_INSTANCE_BINDING_DESCRIPTION,
+        {location = 2, format = vulkan.VK_FORMAT_R32G32B32A32_SFLOAT, offset = 0},
+        {location = 3, format = vulkan.VK_FORMAT_R32G32B32A32_SFLOAT, offset = 16},
+        {location = 4, format = vulkan.VK_FORMAT_R32G32B32A32_SFLOAT, offset = 32},
+        {location = 5, format = vulkan.VK_FORMAT_R32_UINT, offset = 48},
+        {location = 6, format = vulkan.VK_FORMAT_R32_SFLOAT, offset = 52},
+    }
+
+    uiRenderPass.setup(pTknGfxContext, pSwapchainAttachment, pDepthStencilAttachment, assetsPath, ui.instanceVertexInputLayout, ui.instanceVertexInputLayout, renderPassIndex)
 
     ui.pTknSampler = tkn.tknCreateSampler(pTknGfxContext, vulkan.VK_FILTER_LINEAR, vulkan.VK_FILTER_LINEAR, vulkan.VK_SAMPLER_MIPMAP_MODE_LINEAR, vulkan.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, vulkan.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, vulkan.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, 0.0, false, 0.0, false, 0, 0.0, 0.0, vulkan.VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK, false)
     ui.renderPass = uiRenderPass
@@ -475,8 +472,8 @@ function ui.teardown(pTknGfxContext)
     ui.pTknSampler = nil
     ui.rootNode = nil
     uiRenderPass.teardown(pTknGfxContext)
-    ui.instanceFormat = nil
-    ui.vertexFormat = nil
+    ui.instanceVertexInputLayout = nil
+    ui.meshVertexInputLayout = nil
     textNode.teardown()
     imageNode.teardown(pTknGfxContext)
     ui.layoutType = nil
@@ -591,7 +588,7 @@ end
 
 function ui.addImageNode(pTknGfxContext, parent, index, name, horizontal, vertical, transform, color, alphaThreshold, fitMode, image, uv, mask)
     local node = addNodeInternal(pTknGfxContext, parent, index, name, horizontal, vertical, transform);
-    imageNode.setupNode(pTknGfxContext, color, alphaThreshold, fitMode, image, uv, ui.vertexFormat, ui.instanceFormat, ui.renderPass.pImagePipeline, mask, node)
+    imageNode.setupNode(pTknGfxContext, color, alphaThreshold, fitMode, image, uv, ui.meshVertexInputLayout, ui.instanceVertexInputLayout, ui.renderPass.pImagePipeline, mask, node)
     return node
 end
 
@@ -603,7 +600,7 @@ end
 
 function ui.addTextNode(pTknGfxContext, parent, index, name, horizontal, vertical, transform, textContent, font, size, color, alphaThreshold, horizontalAlign, verticalAlign, bold)
     local node = ui.addNode(pTknGfxContext, parent, index, name, horizontal, vertical, transform);
-    textNode.setupNode(pTknGfxContext, textContent, font, size, color, alphaThreshold, horizontalAlign or 0, verticalAlign or 0, bold, font.pTknMaterial, ui.vertexFormat, ui.instanceFormat, ui.renderPass.pTextPipeline, node)
+    textNode.setupNode(pTknGfxContext, textContent, font, size, color, alphaThreshold, horizontalAlign or 0, verticalAlign or 0, bold, font.pTknMaterial, ui.meshVertexInputLayout, ui.instanceVertexInputLayout, ui.renderPass.pTextPipeline, node)
     return node
 end
 

@@ -2,6 +2,7 @@
 // Integrates TickernelGfx graphics core with Lua scripting engine
 
 #include "tkn.h"
+#include "tknGfx.h"
 #include "tknGfxLua.h"
 #include <stdio.h>
 #include <string.h>
@@ -26,7 +27,7 @@ static int errorHandler(lua_State *pLuaState)
     return 1;
 }
 
-void *tknCreateContextPtr(const char *assetsPath, uint32_t luaLibraryCount, LuaLibrary *luaLibraries, uint32_t extensionCount, const char **extensions, void *pSurface, uint32_t width, uint32_t height)
+void *tknCreateContextPtr(const char *assetsPath, uint32_t luaLibraryCount, LuaLibrary *luaLibraries, void *pInstance, void *pSurface, uint32_t width, uint32_t height)
 {
     TknContext *pTknContext = tknMalloc(sizeof(TknContext));
 
@@ -40,7 +41,7 @@ void *tknCreateContextPtr(const char *assetsPath, uint32_t luaLibraryCount, LuaL
         globalFragSpvPath,
     };
 
-    void *pTknGfxContext = tknCreateGfxContextPtr(extensionCount, extensions, pSurface, width, height, TKN_ARRAY_COUNT(spvPaths), spvPaths);
+    void *pTknGfxContext = tknCreateGfxContextPtr(pInstance, pSurface, width, height, TKN_ARRAY_COUNT(spvPaths), spvPaths);
 
     lua_State *pLuaState = luaL_newstate();
     tknAssert(pLuaState, "Failed to create Lua state");
@@ -180,7 +181,7 @@ extern void tknUpdateContext(TknContext *pTknContext, uint32_t width, uint32_t h
     }
     lua_pop(pLuaState, 1); // Pop return value, errorHandler and tknEngine table
 
-    tknBeginCommandBuffer(pTknGfxContext);
+    tknBeginCommandBuffer(pTknGfxContext, width, height);
 
     // Call recordFrame to record draw commands
     lua_getfield(pLuaState, -1, "recordFrame");

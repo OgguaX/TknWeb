@@ -197,10 +197,6 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     [self createVkInstance];
     [self createVkSurface:pView];
 
-    VkSurfaceFormatKHR vkSurfaceFormatKHR = {
-        .format = VK_FORMAT_B8G8R8A8_SRGB,
-        .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-    };
     VkExtent2D swapchainExtent = {
         .width = width,
         .height = height,
@@ -230,14 +226,19 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 
     NSString *assetsPath =
         [resourcePath stringByAppendingPathComponent:@"assets"];
-    self.pTknContext = createTknContextPtr(
-        [assetsPath UTF8String], sizeof(luaLibraries) / sizeof(luaLibraries[0]),
-        luaLibraries, 2, vkSurfaceFormatKHR, VK_PRESENT_MODE_FIFO_KHR,
-        _vkInstance, _vkSurface, swapchainExtent);
+    
+    self.pTknContext = (TknContext *)tknCreateContextPtr(
+        [assetsPath UTF8String],
+        sizeof(luaLibraries) / sizeof(luaLibraries[0]),
+        luaLibraries,
+        _vkInstance,
+        _vkSurface,
+        swapchainExtent.width,
+        swapchainExtent.height);
 }
 
 - (void)teardownEngine {
-    destroyTknContextPtr(self.pTknContext);
+    tknDestroyContextPtr(self.pTknContext);
     [self destroyVkSurface];
     [self destroyVkInstance];
 }
@@ -257,11 +258,11 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
         .width = width,
         .height = height,
     };
-    updateTknContext(self.pTknContext, swapchainExtent, KEY_CODE_COUNT,
-                            keyCodeStates, MOUSE_CODE_COUNT, mouseCodeStates,
-                            scrollingDeltaX, scrollingDeltaY,
-                            mousePositionNDC.x, mousePositionNDC.y,
-                            [inputText UTF8String], pShouldQuit, pImeEnabled);
+    tknUpdateContext(self.pTknContext, swapchainExtent.width, swapchainExtent.height, KEY_CODE_COUNT,
+                     keyCodeStates, MOUSE_CODE_COUNT, mouseCodeStates,
+                     scrollingDeltaX, scrollingDeltaY,
+                     mousePositionNDC.x, mousePositionNDC.y,
+                     [inputText UTF8String], pShouldQuit, pImeEnabled);
 }
 
 @end

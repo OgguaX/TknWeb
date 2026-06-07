@@ -95,12 +95,12 @@ function textNode.unloadFont(pTknGfxContext, font)
     tkn.tknDestroyTknFontPtr(textNode.pTknFontLibrary, font.pTknFont, pTknGfxContext)
 end
 
-function textNode.setupNode(pTknGfxContext, textContent, font, size, color, alphaThreshold, horizontalAlign, verticalAlign, bold, pTknMaterial, vertexFormat, instanceFormat, pTknPipeline, node)
+function textNode.setupNode(pTknGfxContext, textContent, font, size, color, alphaThreshold, horizontalAlign, verticalAlign, bold, pTknMaterial, meshVertexInputLayout, instanceVertexInputLayout, pTknPipeline, node)
     local maxChars = math.max(#textContent, 1)
     -- Bold text needs more vertices (4x for each character)
     local verticesPerChar = bold and 16 or 4
     local indicesPerChar = bold and 24 or 6
-    local pTknMesh = tkn.tknCreateDefaultMeshPtr(pTknGfxContext, vertexFormat, vertexFormat.pTknVertexInputLayout, maxChars * verticesPerChar, vulkan.VK_INDEX_TYPE_UINT16, maxChars * indicesPerChar)
+    local pTknMesh = tkn.tknCreateDefaultMeshPtr(pTknGfxContext, meshVertexInputLayout, meshVertexInputLayout.pTknVertexInputLayout, maxChars * verticesPerChar, vulkan.VK_INDEX_TYPE_UINT16, maxChars * indicesPerChar)
 
     -- Create instance buffer (mat3 + color)
     local instances = {
@@ -108,7 +108,7 @@ function textNode.setupNode(pTknGfxContext, textContent, font, size, color, alph
         color = {tkn.rgbaToAbgr(color)},
         alphaThreshold = alphaThreshold,
     }
-    local pTknInstance = tkn.tknCreateInstancePtr(pTknGfxContext, instanceFormat.pTknVertexInputLayout, instanceFormat, instances)
+    local pTknInstance = tkn.tknCreateInstancePtr(pTknGfxContext, instanceVertexInputLayout.pTknVertexInputLayout, instanceVertexInputLayout, instances)
     local pTknDrawCall = tkn.tknCreateDrawCallPtr(pTknGfxContext, pTknPipeline, pTknMaterial, pTknMesh, pTknInstance)
     node.text = textContent
     node.textDirty = true
@@ -196,7 +196,7 @@ function textNode.measureText(font, text, size, rectWidth, screenWidth, screenHe
     return lineCount * lineHeight
 end
 
-function textNode.updateMeshPtr(pTknGfxContext, node, vertexFormat, screenWidth, screenHeight, boundsDirty, screenSizeDirty)
+function textNode.updateMeshPtr(pTknGfxContext, node, meshVertexInputLayout, screenWidth, screenHeight, boundsDirty, screenSizeDirty)
     if boundsDirty or screenSizeDirty or node.font.dirty or node.textDirty then
         local rect = node.rect
         -- rect.horizontal/vertical.min/max are already relative to pivot (0, 0)
@@ -367,7 +367,7 @@ function textNode.updateMeshPtr(pTknGfxContext, node, vertexFormat, screenWidth,
         end
 
         if charIndex > 0 then
-            tkn.tknUpdateMeshPtr(pTknGfxContext, node.pTknMesh, vertexFormat, vertices, vulkan.VK_INDEX_TYPE_UINT16, indices)
+            tkn.tknUpdateMeshPtr(pTknGfxContext, node.pTknMesh, meshVertexInputLayout, vertices, vulkan.VK_INDEX_TYPE_UINT16, indices)
         end
         node.textDirty = false
     end

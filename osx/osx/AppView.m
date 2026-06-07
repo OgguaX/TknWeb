@@ -41,17 +41,6 @@
         [self.window close];
         return;
     }
-
-    for (int i = 0; i < KEY_CODE_COUNT; i++) {
-        if (self.keyCodeStates[i] == INPUT_STATE_UP) {
-            self.keyCodeStates[i] = INPUT_STATE_IDLE;
-        }
-    }
-    for (int i = 0; i < MOUSE_CODE_COUNT; i++) {
-        if (self.mouseCodeStates[i] == INPUT_STATE_UP) {
-            self.mouseCodeStates[i] = INPUT_STATE_IDLE;
-        }
-    }
 }
 
 - (BOOL)acceptsFirstResponder {
@@ -96,22 +85,22 @@
 }
 
 - (void)mouseDown:(NSEvent *)event {
-    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_DOWN;
+    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_PRESSED;
     [super mouseDown:event];
 }
 
 - (void)mouseUp:(NSEvent *)event {
-    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_UP;
+    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_RELEASED;
     [super mouseUp:event];
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
-    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_DOWN;
+    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_PRESSED;
     [super rightMouseDown:event];
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
-    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_UP;
+    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_RELEASED;
     [super rightMouseDown:event];
 }
 
@@ -119,7 +108,7 @@
     NSAssert(event.buttonNumber < MOUSE_CODE_COUNT && event.buttonNumber > 0,
              @"event.buttonNumber: %d is out of range!",
              (int)event.buttonNumber);
-    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_DOWN;
+    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_PRESSED;
     [super otherMouseDown:event];
 }
 
@@ -127,7 +116,7 @@
     NSAssert(event.buttonNumber < MOUSE_CODE_COUNT && event.buttonNumber > 0,
              @"event.buttonNumber: %d is out of range!",
              (int)event.buttonNumber);
-    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_UP;
+    self.mouseCodeStates[event.buttonNumber] = INPUT_STATE_RELEASED;
     [super otherMouseUp:event];
 }
 
@@ -138,14 +127,14 @@
 }
 
 - (void)keyDown:(NSEvent *)event {
-    [self updateKeyCode:event keyState:INPUT_STATE_DOWN];
+    [self updateKeyCode:event keyState:INPUT_STATE_PRESSED];
     if (self.imeEnabled) {
         [self interpretKeyEvents:@[event]];
     }
 }
 
 - (void)keyUp:(NSEvent *)event {
-    [self updateKeyCode:event keyState:INPUT_STATE_UP];
+    [self updateKeyCode:event keyState:INPUT_STATE_RELEASED];
     [super keyUp:event];
 }
 
@@ -530,7 +519,10 @@
 - (void)doCommandBySelector:(SEL)selector {
     // Let the system handle standard commands (e.g. move cursor, delete)
     if ([self respondsToSelector:selector]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
         [self performSelector:selector withObject:nil];
+#pragma clang diagnostic pop
     }
 }
 

@@ -1,5 +1,4 @@
 #pragma once
-#include "tknGfx.h"
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
@@ -30,7 +29,7 @@ typedef struct
 } LuaLibrary;
 
 // Create Tickernel context (integrates graphics and Lua)
-extern void *tknCreateContextPtr(const char *assetsPath, uint32_t luaLibraryCount, LuaLibrary *luaLibraries, uint32_t extensionCount, const char **extensions, void *pSurface, uint32_t width, uint32_t height);
+extern void *tknCreateContextPtr(const char *assetsPath, uint32_t luaLibraryCount, LuaLibrary *luaLibraries, void *pInstance, void *pSurface, uint32_t width, uint32_t height);
 
 // Destroy Tickernel context
 extern void tknDestroyContextPtr(TknContext *pTknContext);

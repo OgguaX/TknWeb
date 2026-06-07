@@ -7,61 +7,6 @@
 #include <string.h>
 
 // ============================================================================
-// Graphics Context Functions
-// ============================================================================
-
-static int luaCreateGfxContextPtr(lua_State *L)
-{
-    uint32_t extensionCount = (uint32_t)luaL_checkinteger(L, 1);
-    
-    // Extract extensions table
-    const char **extensions = NULL;
-    if (lua_istable(L, 2) && extensionCount > 0)
-    {
-        extensions = tknMalloc(extensionCount * sizeof(const char *));
-        for (uint32_t i = 0; i < extensionCount; i++)
-        {
-            lua_geti(L, 2, i + 1);
-            extensions[i] = lua_tostring(L, -1);
-            lua_pop(L, 1);
-        }
-    }
-    
-    void *pSurface = lua_touserdata(L, 3);
-    uint32_t width = (uint32_t)luaL_checkinteger(L, 4);
-    uint32_t height = (uint32_t)luaL_checkinteger(L, 5);
-    uint32_t globalShaderPathCount = (uint32_t)luaL_checkinteger(L, 6);
-    
-    // Extract shader paths table
-    const char **globalShaderPaths = NULL;
-    if (lua_istable(L, 7) && globalShaderPathCount > 0)
-    {
-        globalShaderPaths = tknMalloc(globalShaderPathCount * sizeof(const char *));
-        for (uint32_t i = 0; i < globalShaderPathCount; i++)
-        {
-            lua_geti(L, 7, i + 1);
-            globalShaderPaths[i] = lua_tostring(L, -1);
-            lua_pop(L, 1);
-        }
-    }
-    
-    void *pGfxContext = tknCreateGfxContextPtr(extensionCount, extensions, pSurface, width, height, globalShaderPathCount, globalShaderPaths);
-    
-    tknFree(extensions);
-    tknFree(globalShaderPaths);
-    
-    lua_pushlightuserdata(L, pGfxContext);
-    return 1;
-}
-
-static int luaDestroyGfxContextPtr(lua_State *L)
-{
-    void *pGfxContext = lua_touserdata(L, 1);
-    tknDestroyGfxContextPtr(pGfxContext);
-    return 0;
-}
-
-// ============================================================================
 // Image Functions
 // ============================================================================
 
@@ -76,7 +21,7 @@ static int luaCreateImagePtr(lua_State *L)
     uint32_t height = (uint32_t)luaL_checkinteger(L, 7);
     uint32_t depth = (uint32_t)luaL_checkinteger(L, 8);
     int imageUsageFlags = (int)luaL_checkinteger(L, 9);
-    
+
     void *pImage = tknCreateImagePtr(pGfxContext, dimension, format, mipLevelCount, sampleCount, width, height, depth, imageUsageFlags);
     lua_pushlightuserdata(L, pImage);
     return 1;
@@ -101,7 +46,7 @@ static int luaCreateImageView(lua_State *L)
     int dimension = (int)luaL_checkinteger(L, 7);
     int format = (int)luaL_checkinteger(L, 8);
     void *pImage = lua_touserdata(L, 9);
-    
+
     void *pImageView = tknCreateImageView(pGfxContext, baseLayer, layerCount, aspectFlags, baseMipLevel, mipLevelCount, dimension, format, pImage);
     lua_pushlightuserdata(L, pImageView);
     return 1;
@@ -120,24 +65,24 @@ static int luaWriteImagePtr(lua_State *L)
     // Parameter validation
     void *pGfxContext = lua_touserdata(L, 1);
     void *pImage = lua_touserdata(L, 2);
-    
+
     if (!pGfxContext || !pImage)
     {
         lua_pushboolean(L, false);
         lua_pushstring(L, "Invalid graphics context or image pointer");
         return 2;
     }
-    
+
     // Handle string data source for binary image data (ASTC, ETC2, etc.)
     const void *pData = NULL;
     uint64_t dataSize = 0;
-    
+
     if (lua_type(L, 3) == LUA_TSTRING)
     {
         size_t strLen;
         pData = lua_tolstring(L, 3, &strLen);
         dataSize = (uint64_t)strLen;
-        
+
         if (dataSize == 0)
         {
             lua_pushboolean(L, false);
@@ -151,7 +96,7 @@ static int luaWriteImagePtr(lua_State *L)
         lua_pushstring(L, "Invalid data type for tknWriteImagePtr: expected string");
         return 2;
     }
-    
+
     uint32_t width = (uint32_t)luaL_checkinteger(L, 4);
     uint32_t height = (uint32_t)luaL_checkinteger(L, 5);
     uint32_t depth = (uint32_t)luaL_checkinteger(L, 6);
@@ -159,7 +104,7 @@ static int luaWriteImagePtr(lua_State *L)
     uint32_t offsetX = (uint32_t)luaL_checkinteger(L, 8);
     uint32_t offsetY = (uint32_t)luaL_checkinteger(L, 9);
     uint32_t offsetZ = (uint32_t)luaL_checkinteger(L, 10);
-    
+
     // Validate dimensions
     if (width == 0 || height == 0 || depth == 0)
     {
@@ -167,9 +112,9 @@ static int luaWriteImagePtr(lua_State *L)
         lua_pushstring(L, "Image dimensions cannot be zero");
         return 2;
     }
-    
+
     tknWriteImagePtr(pGfxContext, pImage, pData, dataSize, width, height, depth, mipLevel, offsetX, offsetY, offsetZ);
-    
+
     lua_pushboolean(L, true);
     return 1;
 }
@@ -183,7 +128,7 @@ static int luaCreateUniformBuffer(lua_State *L)
     void *pBuffer = lua_touserdata(L, 1);
     uint64_t offset = (uint64_t)luaL_checkinteger(L, 2);
     uint64_t range = (uint64_t)luaL_checkinteger(L, 3);
-    
+
     void *pUniformBuffer = tknCreateUniformBuffer(pBuffer, offset, range);
     lua_pushlightuserdata(L, pUniformBuffer);
     return 1;
@@ -202,10 +147,10 @@ static int luaCreateBufferPtr(lua_State *L)
     uint64_t size = (uint64_t)luaL_checkinteger(L, 2);
     int usage = (int)luaL_checkinteger(L, 3);
     bool mappedAtCreation = lua_toboolean(L, 4);
-    
+
     // Handle string data source
     const void *pData = NULL;
-    
+
     if (lua_type(L, 5) == LUA_TSTRING)
     {
         // If string, use string data directly
@@ -220,7 +165,7 @@ static int luaCreateBufferPtr(lua_State *L)
     {
         tknWarning("Invalid data type for buffer: expected string or nil, got %s", lua_typename(L, lua_type(L, 5)));
     }
-    
+
     void *pTknBuffer = tknCreateBufferPtr(pGfxContext, size, usage, mappedAtCreation, pData);
     lua_pushlightuserdata(L, pTknBuffer);
     return 1;
@@ -240,10 +185,10 @@ static int luaUpdateBuffer(lua_State *L)
     void *pTknBuffer = lua_touserdata(L, 2);
     uint64_t offset = (uint64_t)luaL_checkinteger(L, 3);
     uint64_t size = (uint64_t)luaL_checkinteger(L, 4);
-    
+
     // Handle string data source
     const void *pData = NULL;
-    
+
     if (lua_type(L, 5) == LUA_TSTRING)
     {
         // If string, use string data directly
@@ -259,7 +204,7 @@ static int luaUpdateBuffer(lua_State *L)
         tknWarning("Invalid data type for buffer update: expected string or nil, got %s", lua_typename(L, lua_type(L, 5)));
         return 0;
     }
-    
+
     tknUpdateBuffer(pGfxContext, pTknBuffer, offset, size, pData);
     return 0;
 }
@@ -286,7 +231,7 @@ static int luaCreateSampler(lua_State *L)
     float maxLod = (float)luaL_checknumber(L, 14);
     int borderColor = (int)luaL_checkinteger(L, 15);
     bool unnormalizedCoordinates = lua_toboolean(L, 16);
-    
+
     void *pSampler = tknCreateSampler(pGfxContext, magFilter, minFilter, mipmapMode, addressModeU, addressModeV, addressModeW, mipLodBias, anisotropyEnable, maxAnisotropy, compareEnable, compareOp, minLod, maxLod, borderColor, unnormalizedCoordinates);
     lua_pushlightuserdata(L, pSampler);
     return 1;
@@ -307,26 +252,30 @@ static int luaDestroySampler(lua_State *L)
 static int luaCreateBindingGroupLayout(lua_State *L)
 {
     void *pGfxContext = lua_touserdata(L, 1);
-    uint32_t shaderPathCount = (uint32_t)luaL_checkinteger(L, 2);
-    
-    // Extract shader paths table
+
+    // Extract shader paths table (parameter 2)
+    uint32_t shaderPathCount = 0;
     const char **shaderPaths = NULL;
-    if (lua_istable(L, 3) && shaderPathCount > 0)
+    if (lua_istable(L, 2))
     {
-        shaderPaths = tknMalloc(shaderPathCount * sizeof(const char *));
-        for (uint32_t i = 0; i < shaderPathCount; i++)
+        shaderPathCount = (uint32_t)lua_rawlen(L, 2);
+        if (shaderPathCount > 0)
         {
-            lua_geti(L, 3, i + 1);
-            shaderPaths[i] = lua_tostring(L, -1);
-            lua_pop(L, 1);
+            shaderPaths = tknMalloc(shaderPathCount * sizeof(const char *));
+            for (uint32_t i = 0; i < shaderPathCount; i++)
+            {
+                lua_geti(L, 2, i + 1);
+                shaderPaths[i] = lua_tostring(L, -1);
+                lua_pop(L, 1);
+            }
         }
     }
-    
-    uint32_t set = (uint32_t)luaL_checkinteger(L, 4);
-    
+
+    uint32_t set = (uint32_t)luaL_checkinteger(L, 3);
+
     void *pLayout = tknCreateBindingGroupLayout(pGfxContext, shaderPathCount, shaderPaths, set);
     tknFree(shaderPaths);
-    
+
     lua_pushlightuserdata(L, pLayout);
     return 1;
 }
@@ -343,24 +292,28 @@ static int luaCreateBindingGroup(lua_State *L)
 {
     void *pGfxContext = lua_touserdata(L, 1);
     void *pLayout = lua_touserdata(L, 2);
-    uint32_t resourceCount = (uint32_t)luaL_checkinteger(L, 3);
-    
-    // Extract resource pointers table
+
+    // Extract resource pointers table (parameter 3)
+    uint32_t resourceCount = 0;
     void **resourcePtrs = NULL;
-    if (lua_istable(L, 4) && resourceCount > 0)
+    if (lua_istable(L, 3))
     {
-        resourcePtrs = tknMalloc(resourceCount * sizeof(void *));
-        for (uint32_t i = 0; i < resourceCount; i++)
+        resourceCount = (uint32_t)lua_rawlen(L, 3);
+        if (resourceCount > 0)
         {
-            lua_geti(L, 4, i + 1);
-            resourcePtrs[i] = lua_touserdata(L, -1);
-            lua_pop(L, 1);
+            resourcePtrs = tknMalloc(resourceCount * sizeof(void *));
+            for (uint32_t i = 0; i < resourceCount; i++)
+            {
+                lua_geti(L, 3, i + 1);
+                resourcePtrs[i] = lua_touserdata(L, -1);
+                lua_pop(L, 1);
+            }
         }
     }
-    
+
     void *pBindingGroup = tknCreateBindingGroup(pGfxContext, pLayout, resourceCount, resourcePtrs);
     tknFree(resourcePtrs);
-    
+
     lua_pushlightuserdata(L, pBindingGroup);
     return 1;
 }
@@ -377,62 +330,80 @@ static int luaUpdateBindingGroup(lua_State *L)
 {
     void *pGfxContext = lua_touserdata(L, 1);
     void *pBindingGroup = lua_touserdata(L, 2);
-    uint32_t resourceCount = (uint32_t)luaL_checkinteger(L, 3);
-    
-    // Extract indices table
+
+    // Extract indices table (parameter 3)
+    uint32_t resourceCount = 0;
     uint32_t *indices = NULL;
-    if (lua_istable(L, 4) && resourceCount > 0)
+    if (lua_istable(L, 3))
     {
-        indices = tknMalloc(resourceCount * sizeof(uint32_t));
-        for (uint32_t i = 0; i < resourceCount; i++)
+        resourceCount = (uint32_t)lua_rawlen(L, 3);
+        if (resourceCount > 0)
         {
-            lua_geti(L, 4, i + 1);
-            indices[i] = (uint32_t)lua_tointeger(L, -1);
-            lua_pop(L, 1);
+            indices = tknMalloc(resourceCount * sizeof(uint32_t));
+            for (uint32_t i = 0; i < resourceCount; i++)
+            {
+                lua_geti(L, 3, i + 1);
+                indices[i] = (uint32_t)lua_tointeger(L, -1);
+                lua_pop(L, 1);
+            }
         }
     }
-    
-    // Extract resource pointers table
+
+    // Extract resource pointers table (parameter 4)
     void **resourcePtrs = NULL;
-    if (lua_istable(L, 5) && resourceCount > 0)
+    if (lua_istable(L, 4) && resourceCount > 0)
     {
         resourcePtrs = tknMalloc(resourceCount * sizeof(void *));
         for (uint32_t i = 0; i < resourceCount; i++)
         {
-            lua_geti(L, 5, i + 1);
+            lua_geti(L, 4, i + 1);
             resourcePtrs[i] = lua_touserdata(L, -1);
             lua_pop(L, 1);
         }
     }
-    
+
     tknUpdateBindingGroup(pGfxContext, pBindingGroup, resourceCount, indices, resourcePtrs);
     tknFree(indices);
     tknFree(resourcePtrs);
-    
+
     return 0;
 }
 
 // ============================================================================
 // Vertex Input Attribute Parsing Helper
 // ============================================================================
+typedef struct LuaVertexInputAttributeLayout
+{
+    uint32_t location;
+    int format;
+    uint32_t offset;
+} LuaVertexInputAttributeLayout;
+
+typedef struct LuaVertexInputLayout
+{
+    int tknVertexBinding;
+    uint32_t tknVertexInputAttributeDescriptionCount;
+    LuaVertexInputAttributeLayout *tknVertexInputAttributeDescriptions;
+} LuaVertexInputLayout;
+
 // Note: binding is determined by parameter position (mesh=0, instance=1), not parsed from table
-static TknVertexInputAttributeLayout *luaExtractVertexInputAttributeDescriptions(lua_State *L, int tableIndex, uint32_t *pCount)
+static LuaVertexInputAttributeLayout *luaExtractVertexInputAttributeDescriptions(lua_State *L, int tableIndex, uint32_t *pCount)
 {
     if (!lua_istable(L, tableIndex))
     {
         *pCount = 0;
         return NULL;
     }
-    
+
     uint32_t count = (uint32_t)lua_rawlen(L, tableIndex);
     if (count == 0)
     {
         *pCount = 0;
         return NULL;
     }
-    
-    TknVertexInputAttributeLayout *descriptions = tknMalloc(count * sizeof(TknVertexInputAttributeLayout));
-    
+
+    LuaVertexInputAttributeLayout *descriptions = tknMalloc(count * sizeof(LuaVertexInputAttributeLayout));
+
     for (uint32_t i = 0; i < count; i++)
     {
         lua_geti(L, tableIndex, i + 1);
@@ -443,23 +414,23 @@ static TknVertexInputAttributeLayout *luaExtractVertexInputAttributeDescriptions
             lua_pop(L, 1);
             return NULL;
         }
-        
+
         // Extract fields: location, format, offset
         lua_getfield(L, -1, "location");
         descriptions[i].location = (uint32_t)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
+
         lua_getfield(L, -1, "format");
         descriptions[i].format = (int)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
+
         lua_getfield(L, -1, "offset");
         descriptions[i].offset = (uint32_t)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
+
         lua_pop(L, 1); // Pop the attribute description table
     }
-    
+
     *pCount = count;
     return descriptions;
 }
@@ -468,90 +439,107 @@ static int luaCreatePipelinePtr(lua_State *L)
 {
     void *pGfxContext = lua_touserdata(L, 1);
     void *pRenderPassBindingGroupLayout = lua_touserdata(L, 2);
-    uint32_t spvPathCount = (uint32_t)luaL_checkinteger(L, 3);
-    
-    // Extract SPV paths table
+
+    // Extract SPV paths table (parameter 3) and derive count
+    uint32_t spvPathCount = 0;
     const char **spvPaths = NULL;
-    if (lua_istable(L, 4) && spvPathCount > 0)
+    if (lua_istable(L, 3))
     {
-        spvPaths = tknMalloc(spvPathCount * sizeof(const char *));
-        for (uint32_t i = 0; i < spvPathCount; i++)
+        spvPathCount = (uint32_t)lua_rawlen(L, 3);
+        if (spvPathCount > 0)
         {
-            lua_geti(L, 4, i + 1);
-            spvPaths[i] = lua_tostring(L, -1);
-            lua_pop(L, 1);
+            spvPaths = tknMalloc(spvPathCount * sizeof(const char *));
+            for (uint32_t i = 0; i < spvPathCount; i++)
+            {
+                lua_geti(L, 3, i + 1);
+                spvPaths[i] = lua_tostring(L, -1);
+                lua_pop(L, 1);
+            }
         }
     }
-    
+
     // Extract mesh and instance vertex input attribute descriptions
     uint32_t meshAttrCount = 0;
-    TknVertexInputAttributeLayout *pMeshAttrs = luaExtractVertexInputAttributeDescriptions(L, 5, &meshAttrCount);
-    
+    LuaVertexInputAttributeLayout *pMeshAttrs = luaExtractVertexInputAttributeDescriptions(L, 4, &meshAttrCount);
+
     uint32_t instanceAttrCount = 0;
-    TknVertexInputAttributeLayout *pInstanceAttrs = luaExtractVertexInputAttributeDescriptions(L, 6, &instanceAttrCount);
-    
-    // Build TknVertexState
-    TknVertexState vertexState = {
-        .meshAttributeCount = meshAttrCount,
-        .pMeshAttributes = pMeshAttrs,
-        .instanceAttributeCount = instanceAttrCount,
-        .pInstanceAttributes = pInstanceAttrs,
+    LuaVertexInputAttributeLayout *pInstanceAttrs = luaExtractVertexInputAttributeDescriptions(L, 5, &instanceAttrCount);
+
+    LuaVertexInputLayout meshVertexInputLayout = {
+        .tknVertexBinding = 0,
+        .tknVertexInputAttributeDescriptionCount = meshAttrCount,
+        .tknVertexInputAttributeDescriptions = pMeshAttrs,
     };
-    
-    // Build TknPrimitiveState from table at index 7
-    TknPrimitiveState primitiveState = {0};
-    if (lua_istable(L, 7))
+    LuaVertexInputLayout instanceVertexInputLayout = {
+        .tknVertexBinding = 1,
+        .tknVertexInputAttributeDescriptionCount = instanceAttrCount,
+        .tknVertexInputAttributeDescriptions = pInstanceAttrs,
+    };
+
+    // Extract primitive state from table at index 6
+    int topology = 0;
+    int polygonMode = 0;
+    int cullMode = 0;
+    int frontFace = 0;
+    bool depthBiasEnable = false;
+    float depthBiasConstantFactor = 0.0f;
+    float depthBiasClamp = 0.0f;
+    float depthBiasSlopeFactor = 0.0f;
+    float lineWidth = 0.0f;
+    if (lua_istable(L, 6))
     {
-        lua_getfield(L, 7, "topology");
-        primitiveState.topology = (int)lua_tointeger(L, -1);
+        lua_getfield(L, 6, "topology");
+        topology = (int)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 7, "polygonMode");
-        primitiveState.polygonMode = (int)lua_tointeger(L, -1);
+
+        lua_getfield(L, 6, "polygonMode");
+        polygonMode = (int)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 7, "cullMode");
-        primitiveState.cullMode = (int)lua_tointeger(L, -1);
+
+        lua_getfield(L, 6, "cullMode");
+        cullMode = (int)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 7, "frontFace");
-        primitiveState.frontFace = (int)lua_tointeger(L, -1);
+
+        lua_getfield(L, 6, "frontFace");
+        frontFace = (int)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 7, "depthBiasEnable");
-        primitiveState.depthBiasEnable = (bool)lua_toboolean(L, -1);
+
+        lua_getfield(L, 6, "depthBiasEnable");
+        depthBiasEnable = (bool)lua_toboolean(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 7, "depthBiasConstantFactor");
-        primitiveState.depthBiasConstantFactor = (float)lua_tonumber(L, -1);
+
+        lua_getfield(L, 6, "depthBiasConstantFactor");
+        depthBiasConstantFactor = (float)lua_tonumber(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 7, "depthBiasClamp");
-        primitiveState.depthBiasClamp = (float)lua_tonumber(L, -1);
+
+        lua_getfield(L, 6, "depthBiasClamp");
+        depthBiasClamp = (float)lua_tonumber(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 7, "depthBiasSlopeFactor");
-        primitiveState.depthBiasSlopeFactor = (float)lua_tonumber(L, -1);
+
+        lua_getfield(L, 6, "depthBiasSlopeFactor");
+        depthBiasSlopeFactor = (float)lua_tonumber(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 7, "lineWidth");
-        primitiveState.lineWidth = (float)lua_tonumber(L, -1);
+
+        lua_getfield(L, 6, "lineWidth");
+        lineWidth = (float)lua_tonumber(L, -1);
         lua_pop(L, 1);
     }
-    
-    // Build TknFragmentState from table at index 8
+
+    // Build TknFragmentState from table at index 7
     int *pColorAttachmentFormats = NULL;
     uint32_t colorAttachmentCount = 0;
-    TknPipelineColorBlendState colorBlendState = {0};
-    
-    if (lua_istable(L, 8))
+    uint32_t attachmentCount = 0;
+    TknPipelineColorBlendAttachmentState *attachments = NULL;
+    float blendConstants[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    if (lua_istable(L, 7))
     {
-        lua_getfield(L, 8, "colorAttachmentCount");
+        lua_getfield(L, 7, "colorAttachmentCount");
         colorAttachmentCount = (uint32_t)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
+
         // Extract color attachment formats
-        lua_getfield(L, 8, "pColorAttachmentFormats");
+        lua_getfield(L, 7, "pColorAttachmentFormats");
         if (lua_istable(L, -1) && colorAttachmentCount > 0)
         {
             pColorAttachmentFormats = tknMalloc(colorAttachmentCount * sizeof(int));
@@ -563,62 +551,67 @@ static int luaCreatePipelinePtr(lua_State *L)
             }
         }
         lua_pop(L, 1);
-        
+
         // Extract color blend state
-        lua_getfield(L, 8, "colorBlend");
+        lua_getfield(L, 7, "colorBlend");
         if (lua_istable(L, -1))
         {
             lua_getfield(L, -1, "attachmentCount");
-            colorBlendState.attachmentCount = (uint32_t)lua_tointeger(L, -1);
+            attachmentCount = (uint32_t)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
-            // Extract blend attachments
-            lua_getfield(L, -1, "pAttachments");
-            if (lua_istable(L, -1) && colorBlendState.attachmentCount > 0)
+
+            // Extract blend attachments (preferred key: attachments, legacy fallback: pAttachments)
+            lua_getfield(L, -1, "attachments");
+            if (!lua_istable(L, -1))
             {
-                colorBlendState.pAttachments = tknMalloc(colorBlendState.attachmentCount * sizeof(TknPipelineColorBlendAttachmentState));
-                for (uint32_t i = 0; i < colorBlendState.attachmentCount; i++)
+                lua_pop(L, 1);
+                lua_getfield(L, -1, "pAttachments");
+            }
+            if (lua_istable(L, -1) && attachmentCount > 0)
+            {
+                attachments = tknMalloc(attachmentCount * sizeof(TknPipelineColorBlendAttachmentState));
+                for (uint32_t i = 0; i < attachmentCount; i++)
                 {
                     lua_geti(L, -1, i + 1);
                     if (lua_istable(L, -1))
                     {
                         lua_getfield(L, -1, "blendEnable");
-                        colorBlendState.pAttachments[i].blendEnable = (bool)lua_toboolean(L, -1);
+                        attachments[i].blendEnable = (bool)lua_toboolean(L, -1);
                         lua_pop(L, 1);
-                        
+
                         lua_getfield(L, -1, "srcColorBlendFactor");
-                        colorBlendState.pAttachments[i].srcColorBlendFactor = (int)lua_tointeger(L, -1);
+                        attachments[i].srcColorBlendFactor = (int)lua_tointeger(L, -1);
                         lua_pop(L, 1);
-                        
+
                         lua_getfield(L, -1, "dstColorBlendFactor");
-                        colorBlendState.pAttachments[i].dstColorBlendFactor = (int)lua_tointeger(L, -1);
+                        attachments[i].dstColorBlendFactor = (int)lua_tointeger(L, -1);
                         lua_pop(L, 1);
-                        
+
                         lua_getfield(L, -1, "colorBlendOp");
-                        colorBlendState.pAttachments[i].colorBlendOp = (int)lua_tointeger(L, -1);
+                        attachments[i].colorBlendOp = (int)lua_tointeger(L, -1);
                         lua_pop(L, 1);
-                        
+
                         lua_getfield(L, -1, "srcAlphaBlendFactor");
-                        colorBlendState.pAttachments[i].srcAlphaBlendFactor = (int)lua_tointeger(L, -1);
+                        attachments[i].srcAlphaBlendFactor = (int)lua_tointeger(L, -1);
                         lua_pop(L, 1);
-                        
+
                         lua_getfield(L, -1, "dstAlphaBlendFactor");
-                        colorBlendState.pAttachments[i].dstAlphaBlendFactor = (int)lua_tointeger(L, -1);
+                        attachments[i].dstAlphaBlendFactor = (int)lua_tointeger(L, -1);
                         lua_pop(L, 1);
-                        
+
                         lua_getfield(L, -1, "alphaBlendOp");
-                        colorBlendState.pAttachments[i].alphaBlendOp = (int)lua_tointeger(L, -1);
+                        attachments[i].alphaBlendOp = (int)lua_tointeger(L, -1);
                         lua_pop(L, 1);
-                        
+
                         lua_getfield(L, -1, "colorWriteMask");
-                        colorBlendState.pAttachments[i].colorWriteMask = (int)lua_tointeger(L, -1);
+                        attachments[i].colorWriteMask = (int)lua_tointeger(L, -1);
                         lua_pop(L, 1);
                     }
                     lua_pop(L, 1);
                 }
             }
             lua_pop(L, 1);
-            
+
             // Extract blend constants
             lua_getfield(L, -1, "blendConstants");
             if (lua_istable(L, -1))
@@ -626,7 +619,7 @@ static int luaCreatePipelinePtr(lua_State *L)
                 for (int i = 0; i < 4; i++)
                 {
                     lua_geti(L, -1, i + 1);
-                    colorBlendState.blendConstants[i] = (float)lua_tonumber(L, -1);
+                    blendConstants[i] = (float)lua_tonumber(L, -1);
                     lua_pop(L, 1);
                 }
             }
@@ -634,140 +627,158 @@ static int luaCreatePipelinePtr(lua_State *L)
         }
         lua_pop(L, 1);
     }
-    
-    TknFragmentState fragmentState = {
-        .colorAttachmentCount = colorAttachmentCount,
-        .pColorAttachmentFormats = pColorAttachmentFormats,
-        .colorBlend = colorBlendState,
-    };
-    
-    // Build TknPipelineMultisampleState from table at index 9
-    TknPipelineMultisampleState multisampleState = {0};
+
+    // Extract multisample state from table at index 8
+    int rasterizationSamples = 0;
+    bool alphaToCoverageEnable = false;
+    if (lua_istable(L, 8))
+    {
+        lua_getfield(L, 8, "rasterizationSamples");
+        rasterizationSamples = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, 8, "alphaToCoverageEnable");
+        alphaToCoverageEnable = (bool)lua_toboolean(L, -1);
+        lua_pop(L, 1);
+    }
+
+    // Extract depth stencil state from table at index 9
+    bool depthTestEnable = false;
+    bool depthWriteEnable = false;
+    int depthCompareOp = 0;
+    bool stencilTestEnable = false;
+    TknStencilOpState front = {0};
+    TknStencilOpState back = {0};
     if (lua_istable(L, 9))
     {
-        lua_getfield(L, 9, "rasterizationSamples");
-        multisampleState.rasterizationSamples = (int)lua_tointeger(L, -1);
+        lua_getfield(L, 9, "depthTestEnable");
+        depthTestEnable = (bool)lua_toboolean(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 9, "alphaToCoverageEnable");
-        multisampleState.alphaToCoverageEnable = (bool)lua_toboolean(L, -1);
+
+        lua_getfield(L, 9, "depthWriteEnable");
+        depthWriteEnable = (bool)lua_toboolean(L, -1);
         lua_pop(L, 1);
-    }
-    
-    // Build TknPipelineDepthStencilState from table at index 10
-    TknPipelineDepthStencilState depthStencilState = {0};
-    if (lua_istable(L, 10))
-    {
-        lua_getfield(L, 10, "depthTestEnable");
-        depthStencilState.depthTestEnable = (bool)lua_toboolean(L, -1);
+
+        lua_getfield(L, 9, "depthCompareOp");
+        depthCompareOp = (int)lua_tointeger(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 10, "depthWriteEnable");
-        depthStencilState.depthWriteEnable = (bool)lua_toboolean(L, -1);
+
+        lua_getfield(L, 9, "stencilTestEnable");
+        stencilTestEnable = (bool)lua_toboolean(L, -1);
         lua_pop(L, 1);
-        
-        lua_getfield(L, 10, "depthCompareOp");
-        depthStencilState.depthCompareOp = (int)lua_tointeger(L, -1);
-        lua_pop(L, 1);
-        
-        lua_getfield(L, 10, "stencilTestEnable");
-        depthStencilState.stencilTestEnable = (bool)lua_toboolean(L, -1);
-        lua_pop(L, 1);
-        
+
         // Extract front stencil op state
-        lua_getfield(L, 10, "front");
+        lua_getfield(L, 9, "front");
         if (lua_istable(L, -1))
         {
             lua_getfield(L, -1, "failOp");
-            depthStencilState.front.failOp = (int)lua_tointeger(L, -1);
+            front.failOp = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "passOp");
-            depthStencilState.front.passOp = (int)lua_tointeger(L, -1);
+            front.passOp = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "depthFailOp");
-            depthStencilState.front.depthFailOp = (int)lua_tointeger(L, -1);
+            front.depthFailOp = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "compareOp");
-            depthStencilState.front.compareOp = (int)lua_tointeger(L, -1);
+            front.compareOp = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "compareMask");
-            depthStencilState.front.compareMask = (uint32_t)lua_tointeger(L, -1);
+            front.compareMask = (uint32_t)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "writeMask");
-            depthStencilState.front.writeMask = (uint32_t)lua_tointeger(L, -1);
+            front.writeMask = (uint32_t)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "reference");
-            depthStencilState.front.reference = (uint32_t)lua_tointeger(L, -1);
+            front.reference = (uint32_t)lua_tointeger(L, -1);
             lua_pop(L, 1);
         }
         lua_pop(L, 1);
-        
+
         // Extract back stencil op state
-        lua_getfield(L, 10, "back");
+        lua_getfield(L, 9, "back");
         if (lua_istable(L, -1))
         {
             lua_getfield(L, -1, "failOp");
-            depthStencilState.back.failOp = (int)lua_tointeger(L, -1);
+            back.failOp = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "passOp");
-            depthStencilState.back.passOp = (int)lua_tointeger(L, -1);
+            back.passOp = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "depthFailOp");
-            depthStencilState.back.depthFailOp = (int)lua_tointeger(L, -1);
+            back.depthFailOp = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "compareOp");
-            depthStencilState.back.compareOp = (int)lua_tointeger(L, -1);
+            back.compareOp = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "compareMask");
-            depthStencilState.back.compareMask = (uint32_t)lua_tointeger(L, -1);
+            back.compareMask = (uint32_t)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "writeMask");
-            depthStencilState.back.writeMask = (uint32_t)lua_tointeger(L, -1);
+            back.writeMask = (uint32_t)lua_tointeger(L, -1);
             lua_pop(L, 1);
-            
+
             lua_getfield(L, -1, "reference");
-            depthStencilState.back.reference = (uint32_t)lua_tointeger(L, -1);
+            back.reference = (uint32_t)lua_tointeger(L, -1);
             lua_pop(L, 1);
         }
         lua_pop(L, 1);
     }
-    
-    // Extract depth attachment format from index 11
-    int depthAttachmentFormat = (int)luaL_checkinteger(L, 11);
-    
-    // Call the new C API with individual state parameters
+
+    // Extract depth attachment format from index 10
+    int depthAttachmentFormat = (int)luaL_checkinteger(L, 10);
+
+    // Call the flattened C API
     void *pPipeline = tknCreatePipelinePtr(
         pGfxContext,
         pRenderPassBindingGroupLayout,
         spvPathCount,
         spvPaths,
-        &vertexState,
-        &primitiveState,
-        &fragmentState,
-        &multisampleState,
-        &depthStencilState,
-        depthAttachmentFormat
-    );
-    
+        &meshVertexInputLayout,
+        &instanceVertexInputLayout,
+        topology,
+        polygonMode,
+        cullMode,
+        frontFace,
+        depthBiasEnable,
+        depthBiasConstantFactor,
+        depthBiasClamp,
+        depthBiasSlopeFactor,
+        lineWidth,
+        colorAttachmentCount,
+        pColorAttachmentFormats,
+        attachmentCount,
+        attachments,
+        blendConstants,
+        rasterizationSamples,
+        alphaToCoverageEnable,
+        depthTestEnable,
+        depthWriteEnable,
+        depthCompareOp,
+        stencilTestEnable,
+        front,
+        back,
+        depthAttachmentFormat);
+
     // Cleanup
     tknFree(spvPaths);
     tknFree(pMeshAttrs);
     tknFree(pInstanceAttrs);
     tknFree(pColorAttachmentFormats);
-    if (colorBlendState.pAttachments)
-        tknFree(colorBlendState.pAttachments);
-    
+    if (attachments)
+        tknFree(attachments);
+
     lua_pushlightuserdata(L, pPipeline);
     return 1;
 }
@@ -784,11 +795,12 @@ static int luaDestroyPipelinePtr(lua_State *L)
 // Command Buffer Functions
 // ============================================================================
 
-
 static int luaBeginCommandBuffer(lua_State *L)
 {
     void *pGfxContext = lua_touserdata(L, 1);
-    tknBeginCommandBuffer(pGfxContext);
+    uint32_t width = (uint32_t)luaL_checkinteger(L, 2);
+    uint32_t height = (uint32_t)luaL_checkinteger(L, 3);
+    tknBeginCommandBuffer(pGfxContext, width, height);
     return 0;
 }
 
@@ -806,55 +818,59 @@ static int luaEndCommandBuffer(lua_State *L)
 static int luaBeginRenderPass(lua_State *L)
 {
     void *pGfxContext = lua_touserdata(L, 1);
-    uint32_t colorAttachmentCount = (uint32_t)luaL_checkinteger(L, 2);
-    
-    // Extract color image view pointers table
+
+    // Extract color image view pointers table (parameter 2) and derive count
+    uint32_t colorAttachmentCount = 0;
     void **colorImageViewPtrs = NULL;
-    if (lua_istable(L, 3) && colorAttachmentCount > 0)
+    if (lua_istable(L, 2))
     {
-        colorImageViewPtrs = tknMalloc(colorAttachmentCount * sizeof(void *));
-        for (uint32_t i = 0; i < colorAttachmentCount; i++)
+        colorAttachmentCount = (uint32_t)lua_rawlen(L, 2);
+        if (colorAttachmentCount > 0)
         {
-            lua_geti(L, 3, i + 1);
-            colorImageViewPtrs[i] = lua_touserdata(L, -1);
-            lua_pop(L, 1);
+            colorImageViewPtrs = tknMalloc(colorAttachmentCount * sizeof(void *));
+            for (uint32_t i = 0; i < colorAttachmentCount; i++)
+            {
+                lua_geti(L, 2, i + 1);
+                colorImageViewPtrs[i] = lua_touserdata(L, -1);
+                lua_pop(L, 1);
+            }
         }
     }
-    
+
     // Extract load ops table
     int *loadOps = NULL;
-    if (lua_istable(L, 4) && colorAttachmentCount > 0)
+    if (lua_istable(L, 3) && colorAttachmentCount > 0)
     {
         loadOps = tknMalloc(colorAttachmentCount * sizeof(int));
         for (uint32_t i = 0; i < colorAttachmentCount; i++)
         {
-            lua_geti(L, 4, i + 1);
+            lua_geti(L, 3, i + 1);
             loadOps[i] = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
         }
     }
-    
+
     // Extract store ops table
     int *storeOps = NULL;
-    if (lua_istable(L, 5) && colorAttachmentCount > 0)
+    if (lua_istable(L, 4) && colorAttachmentCount > 0)
     {
         storeOps = tknMalloc(colorAttachmentCount * sizeof(int));
         for (uint32_t i = 0; i < colorAttachmentCount; i++)
         {
-            lua_geti(L, 5, i + 1);
+            lua_geti(L, 4, i + 1);
             storeOps[i] = (int)lua_tointeger(L, -1);
             lua_pop(L, 1);
         }
     }
-    
+
     // Extract color clear values table (array of arrays)
     double (*colorClearValues)[4] = NULL;
-    if (lua_istable(L, 6) && colorAttachmentCount > 0)
+    if (lua_istable(L, 5) && colorAttachmentCount > 0)
     {
         colorClearValues = tknMalloc(colorAttachmentCount * sizeof(double[4]));
         for (uint32_t i = 0; i < colorAttachmentCount; i++)
         {
-            lua_geti(L, 6, i + 1);
+            lua_geti(L, 5, i + 1);
             if (lua_istable(L, -1))
             {
                 for (int j = 0; j < 4; j++)
@@ -867,22 +883,22 @@ static int luaBeginRenderPass(lua_State *L)
             lua_pop(L, 1);
         }
     }
-    
-    void *pDepthImageView = lua_touserdata(L, 7);
-    int depthLoadOp = (int)luaL_checkinteger(L, 8);
-    int depthStoreOp = (int)luaL_checkinteger(L, 9);
-    float depthClearValue = (float)luaL_checknumber(L, 10);
-    uint32_t stencilClearValue = (uint32_t)luaL_checkinteger(L, 11);
-    uint32_t width = (uint32_t)luaL_checkinteger(L, 12);
-    uint32_t height = (uint32_t)luaL_checkinteger(L, 13);
-    
+
+    void *pDepthImageView = lua_touserdata(L, 6);
+    int depthLoadOp = (int)luaL_checkinteger(L, 7);
+    int depthStoreOp = (int)luaL_checkinteger(L, 8);
+    float depthClearValue = (float)luaL_checknumber(L, 9);
+    uint32_t stencilClearValue = (uint32_t)luaL_checkinteger(L, 10);
+    uint32_t width = (uint32_t)luaL_checkinteger(L, 11);
+    uint32_t height = (uint32_t)luaL_checkinteger(L, 12);
+
     tknBeginRenderPass(pGfxContext, colorAttachmentCount, colorImageViewPtrs, loadOps, storeOps, colorClearValues, pDepthImageView, depthLoadOp, depthStoreOp, depthClearValue, stencilClearValue, width, height);
-    
+
     tknFree(colorImageViewPtrs);
     tknFree(loadOps);
     tknFree(storeOps);
     tknFree(colorClearValues);
-    
+
     return 0;
 }
 
@@ -903,7 +919,7 @@ static int luaSetPipelinePtr(lua_State *L)
     void *pPipeline = lua_touserdata(L, 2);
     void *pRenderPassBindingGroup = lua_touserdata(L, 3);
     void *pPipelineBindingGroup = lua_touserdata(L, 4);
-    
+
     tknSetPipelinePtr(pGfxContext, pPipeline, pRenderPassBindingGroup, pPipelineBindingGroup);
     return 0;
 }
@@ -917,7 +933,7 @@ static int luaBindVertexBuffer(lua_State *L)
     void *pGfxContext = lua_touserdata(L, 1);
     void *pBuffer = lua_touserdata(L, 2);
     uint64_t offset = (uint64_t)luaL_checkinteger(L, 3);
-    
+
     tknBindVertexBuffer(pGfxContext, pBuffer, offset);
     return 0;
 }
@@ -927,7 +943,7 @@ static int luaBindInstanceBuffer(lua_State *L)
     void *pGfxContext = lua_touserdata(L, 1);
     void *pBuffer = lua_touserdata(L, 2);
     uint64_t offset = (uint64_t)luaL_checkinteger(L, 3);
-    
+
     tknBindInstanceBuffer(pGfxContext, pBuffer, offset);
     return 0;
 }
@@ -938,7 +954,7 @@ static int luaBindIndexBuffer(lua_State *L)
     void *pBuffer = lua_touserdata(L, 2);
     int indexType = (int)luaL_checkinteger(L, 3);
     uint64_t offset = (uint64_t)luaL_checkinteger(L, 4);
-    
+
     tknBindIndexBuffer(pGfxContext, pBuffer, indexType, offset);
     return 0;
 }
@@ -954,7 +970,7 @@ static int luaDraw(lua_State *L)
     uint32_t instanceCount = (uint32_t)luaL_checkinteger(L, 3);
     uint32_t firstVertex = (uint32_t)luaL_checkinteger(L, 4);
     uint32_t firstInstance = (uint32_t)luaL_checkinteger(L, 5);
-    
+
     tknDraw(pGfxContext, vertexCount, instanceCount, firstVertex, firstInstance);
     return 0;
 }
@@ -967,7 +983,7 @@ static int luaDrawIndexed(lua_State *L)
     uint32_t firstIndex = (uint32_t)luaL_checkinteger(L, 4);
     int32_t baseVertex = (int32_t)luaL_checkinteger(L, 5);
     uint32_t firstInstance = (uint32_t)luaL_checkinteger(L, 6);
-    
+
     tknDrawIndexed(pGfxContext, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
     return 0;
 }
@@ -996,7 +1012,7 @@ static int luaCreateTknFontPtr(lua_State *L)
     void *pTknFontLibrary = lua_touserdata(L, 1);
     void *pGfxContext = lua_touserdata(L, 2);
     uint32_t fontPathCount = (uint32_t)luaL_checkinteger(L, 3);
-    
+
     // Extract font paths table
     const char **fontPaths = NULL;
     if (lua_istable(L, 4) && fontPathCount > 0)
@@ -1009,10 +1025,10 @@ static int luaCreateTknFontPtr(lua_State *L)
             lua_pop(L, 1);
         }
     }
-    
+
     uint32_t fontSize = (uint32_t)luaL_checkinteger(L, 5);
     uint32_t atlasLength = (uint32_t)luaL_checkinteger(L, 6);
-    
+
     // Extract bold strengths table (optional)
     FT_Pos *boldStrengths = NULL;
     if (lua_istable(L, 7) && fontPathCount > 0)
@@ -1025,12 +1041,12 @@ static int luaCreateTknFontPtr(lua_State *L)
             lua_pop(L, 1);
         }
     }
-    
+
     void *pTknFont = createTknFontPtr((TknFontLibrary *)pTknFontLibrary, pGfxContext, fontPathCount, fontPaths, fontSize, atlasLength, boldStrengths);
-    
+
     tknFree(fontPaths);
     tknFree(boldStrengths);
-    
+
     lua_pushlightuserdata(L, pTknFont);
     return 1;
 }
@@ -1048,10 +1064,10 @@ static int luaLoadTknChar(lua_State *L)
 {
     void *pTknFont = lua_touserdata(L, 1);
     uint32_t unicode = (uint32_t)luaL_checkinteger(L, 2);
-    
+
     bool hasLoaded = false;
     void *pTknChar = loadTknChar((TknFont *)pTknFont, unicode, &hasLoaded);
-    
+
     lua_pushlightuserdata(L, pTknChar);
     lua_pushboolean(L, hasLoaded);
     return 2;
@@ -1072,61 +1088,57 @@ static int luaFlushTknFontPtr(lua_State *L)
 void bindTknGfxFunctions(lua_State *pLuaState)
 {
     luaL_Reg tknGfxRegs[] = {
-        // Graphics Context
-        {"tknCreateGfxContextPtr", luaCreateGfxContextPtr},
-        {"tknDestroyGfxContextPtr", luaDestroyGfxContextPtr},
-        
         // Image
         {"tknCreateImagePtr", luaCreateImagePtr},
         {"tknDestroyImagePtr", luaDestroyImagePtr},
         {"tknCreateImageView", luaCreateImageView},
         {"tknDestroyImageView", luaDestroyImageView},
         {"tknWriteImagePtr", luaWriteImagePtr},
-        
+
         // Uniform Buffer
         {"tknCreateUniformBuffer", luaCreateUniformBuffer},
         {"tknDestroyUniformBuffer", luaDestroyUniformBuffer},
-        
+
         // Buffer
         {"tknCreateBufferPtr", luaCreateBufferPtr},
         {"tknDestroyBufferPtr", luaDestroyBufferPtr},
         {"tknUpdateBuffer", luaUpdateBuffer},
-        
+
         // Sampler
         {"tknCreateSampler", luaCreateSampler},
         {"tknDestroySampler", luaDestroySampler},
-        
+
         // Binding Group
         {"tknCreateBindingGroupLayout", luaCreateBindingGroupLayout},
         {"tknDestroyBindingGroupLayout", luaDestroyBindingGroupLayout},
         {"tknCreateBindingGroup", luaCreateBindingGroup},
         {"tknDestroyBindingGroup", luaDestroyBindingGroup},
         {"tknUpdateBindingGroup", luaUpdateBindingGroup},
-        
+
         // Pipeline functions
         {"tknCreatePipelinePtr", luaCreatePipelinePtr},
         {"tknDestroyPipelinePtr", luaDestroyPipelinePtr},
-        
+
         // Command Buffer
         {"tknBeginCommandBuffer", luaBeginCommandBuffer},
         {"tknEndCommandBuffer", luaEndCommandBuffer},
-        
+
         // Render Pass
         {"tknBeginRenderPass", luaBeginRenderPass},
         {"tknEndRenderPass", luaEndRenderPass},
-        
+
         // Pipeline Set
         {"tknSetPipelinePtr", luaSetPipelinePtr},
-        
+
         // Buffer Binding
         {"tknBindVertexBuffer", luaBindVertexBuffer},
         {"tknBindInstanceBuffer", luaBindInstanceBuffer},
         {"tknBindIndexBuffer", luaBindIndexBuffer},
-        
+
         // Draw
         {"tknDraw", luaDraw},
         {"tknDrawIndexed", luaDrawIndexed},
-        
+
         // Font
         {"tknCreateTknFontLibraryPtr", luaCreateTknFontLibraryPtr},
         {"tknDestroyTknFontLibraryPtr", luaDestroyTknFontLibraryPtr},
@@ -1134,10 +1146,10 @@ void bindTknGfxFunctions(lua_State *pLuaState)
         {"tknDestroyTknFontPtr", luaDestroyTknFontPtr},
         {"tknLoadTknChar", luaLoadTknChar},
         {"tknFlushTknFontPtr", luaFlushTknFontPtr},
-        
+
         {NULL, NULL},
     };
-    
+
     luaL_newlib(pLuaState, tknGfxRegs);
     lua_setglobal(pLuaState, "tkn");
 }

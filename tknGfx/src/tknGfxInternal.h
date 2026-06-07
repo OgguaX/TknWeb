@@ -78,14 +78,32 @@ typedef struct TknBindingGroup
     void **tknBindingResourcePtrs;
 } TknBindingGroup;
 
+typedef enum
+{
+    TKN_VERTEX_BINDING_DESCRIPTION = 0,
+    TKN_INSTANCE_BINDING_DESCRIPTION = 1,
+} TknVertexBinding;
+
+typedef struct TknVertexInputAttributeLayout
+{
+    uint32_t location;
+    int format;
+    uint32_t offset;
+} TknVertexInputAttributeLayout;
+
+typedef struct TknVertexInputLayout
+{
+    TknVertexBinding tknVertexBinding;
+    uint32_t tknVertexInputAttributeDescriptionCount;
+    TknVertexInputAttributeLayout *tknVertexInputAttributeDescriptions;
+} TknVertexInputLayout;
+
 typedef struct TknPipeline
 {
     VkPipeline vkPipeline;
     VkPipelineLayout vkPipelineLayout;
     TknBindingGroupLayout *pTknPipelineBindingGroupLayout;
-    
-    TknVertexInputLayout tknMeshVertexInputLayout;
-    TknVertexInputLayout tknInstanceVertexInputLayout;
+    TknVertexInputLayout *tknVertexInputLayoutPtrs[TKN_MAX_VERTEX_BINDING_DESCRIPTION];
 } TknPipeline;
 
 typedef struct TknGfxContext

@@ -1,35 +1,6 @@
 #include "tknGfx.h"
 #include "tknGfxInternal.h"
 
-static void tknCreateVkInstance(TknGfxContext *pTknGfxContext, int extensionCount, const char **extensions)
-{
-    VkApplicationInfo appInfo = {
-        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = "TknWeb",
-        .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-        .pEngineName = "Tickernel",
-        .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-        .apiVersion = VK_API_VERSION_1_3,
-    };
-
-    VkInstanceCreateInfo createInfo = {
-        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pApplicationInfo = &appInfo,
-        .enabledExtensionCount = extensionCount,
-        .ppEnabledExtensionNames = extensions,
-    };
-
-    tknAssertVkResult(vkCreateInstance(&createInfo, NULL, &pTknGfxContext->vkInstance));
-}
-static void tknDestroyVkInstance(TknGfxContext *pTknGfxContext)
-{
-    if (pTknGfxContext->vkInstance != NULL)
-    {
-        vkDestroyInstance(pTknGfxContext->vkInstance, NULL);
-        pTknGfxContext->vkInstance = NULL;
-    }
-}
-
 static void tknGetGfxAndPresentQueueFamilyIndices(TknGfxContext *pTknGfxContext, VkPhysicalDevice vkPhysicalDevice, uint32_t *pGfxQueueFamilyIndex, uint32_t *pPresentQueueFamilyIndex)
 {
     VkSurfaceKHR vkSurface = pTknGfxContext->vkSurface;
@@ -572,12 +543,12 @@ static void tknDestroyGlobalBindingGroup(TknGfxContext *pTknGfxContext)
     pTknGfxContext->pTknGlobalBindingGroupLayout = NULL;
 }
 
-void *tknCreateGfxContextPtr(uint32_t extensionCount, const char **extensions, void *pSurface, uint32_t width, uint32_t height, uint32_t globalShaderPathCount, const char **globalShaderPaths)
+void *tknCreateGfxContextPtr(void *pInstance, void *pSurface, uint32_t width, uint32_t height, uint32_t globalShaderPathCount, const char **globalShaderPaths)
 {
     TknGfxContext *pTknGfxContext = tknMalloc(sizeof(TknGfxContext));
     *pTknGfxContext = (TknGfxContext){
-        .vkInstance = VK_NULL_HANDLE,
-        .vkSurface = VK_NULL_HANDLE,
+        .vkInstance = (VkInstance)pInstance,
+        .vkSurface = (VkSurfaceKHR)pSurface,
         .vkSurfaceFormat = {
             .format = VK_FORMAT_B8G8R8A8_UNORM,
             .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
@@ -610,7 +581,6 @@ void *tknCreateGfxContextPtr(uint32_t extensionCount, const char **extensions, v
 
         .frameCount = 0,
     };
-    tknCreateVkInstance(pTknGfxContext, extensionCount, extensions);
     tknPickPhysicalDevice(pTknGfxContext);
     tknPopulateLogicalDevice(pTknGfxContext);
 
@@ -626,6 +596,11 @@ void *tknCreateGfxContextPtr(uint32_t extensionCount, const char **extensions, v
     return pTknGfxContext;
 }
 
+void tknUpdateSwapchainPtr(void *pTknGfxContext, uint32_t width, uint32_t height)
+{
+    tknUpdateSwapchain((TknGfxContext *)pTknGfxContext, (VkExtent2D){.width = width, .height = height});
+}
+
 void tknDestroyGfxContextPtr(void *pTknGfxContext)
 {
     TknGfxContext *pTknGfxContextCasted = (TknGfxContext *)pTknGfxContext;
@@ -636,6 +611,5 @@ void tknDestroyGfxContextPtr(void *pTknGfxContext)
     tknDestroySignals(pTknGfxContextCasted);
     tknDestroySwapchain(pTknGfxContextCasted);
     tknCleanupLogicalDevice(pTknGfxContextCasted);
-    tknDestroyVkInstance(pTknGfxContextCasted);
     tknFree(pTknGfxContextCasted);
 }
